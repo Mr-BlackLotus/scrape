@@ -3,7 +3,7 @@
 Web statis (tanpa build) untuk memantau scrape toko kompetitor: upload JSON → dibandingkan dengan scrape sebelumnya → disimpan ke Google Sheets per kompetitor/tier.
 
 ## Fitur
-- **Upload JSON** hasil scraper (banyak file sekaligus). Kolom nama/harga/stok/terjual/SKU/URL dideteksi otomatis, bisa diubah manual.
+- **Upload hasil scrape** `.xlsx` / `.csv` / `.json` (banyak file sekaligus). Kolom nama/varian/harga/stok/terjual/URL dideteksi otomatis, bisa diubah manual. Format Shopee (satu baris per varian, kolom *Terjual/Bln*) didukung: varian digabung jadi 1 produk (harga = varian tersedia termurah), penjualan dibaca sebagai per bulan. Nama kompetitor ditebak dari nama file `shopee_<toko>_…`.
 - **Per kompetitor & tier** (Agresif, Expert, Reguler, atau tier buatan sendiri). Di Sheet: satu tab per kompetitor, mis. `Agresif - TokoA`.
 - **Perbandingan tiap upload**: SKU baru, penjualan naik / turun / laku / stagnan, SKU hilang, harga naik/turun (nominal & %).
 - **Halaman Kompetitor**: buka satu toko atau semua sekaligus, filter status, cari, sort, export CSV.
@@ -18,11 +18,12 @@ Web statis (tanpa build) untuk memantau scrape toko kompetitor: upload JSON → 
 
 Folder `samples/` berisi contoh data palsu untuk uji coba (3 toko × 3 tanggal).
 
-## Format JSON yang dibaca
+## Format file yang dibaca
+`.xlsx` (sheet terbesar, baris pertama = header) atau `.csv` dengan kolom seperti `Nama Produk, Varian, Harga Jual, Stok, Terjual/Bln, Link`. JSON:
 Array produk, atau objek yang berisi array (`products`, `items`, `data`, …). Contoh field yang dikenali: `name/nama/title`, `price/harga`, `stock/stok/qty`, `sold/terjual`, `sku/id`, `url`. Nama kompetitor dari field `competitor/shop/toko` atau nama file; tanggal dari `scraped_at/date` atau tanggal file.
 
 ## Aturan hitung
-- Penjualan periode = selisih `terjual` antar scrape; bila tidak ada, penurunan `stok` (restock diabaikan).
+- Jika kolom terjual berarti **per bulan** (mis. `Terjual/Bln`): penjualan = nilai kolom itu, tren naik/turun = dibanding scrape sebelumnya (cukup 2 scrape). Jika **kumulatif**: penjualan periode = selisih `terjual` antar scrape; bila tidak ada, penurunan `stok` (restock diabaikan).
 - Naik/turun = laju per hari periode ini vs periode sebelumnya (ambang di Pengaturan, default ×1,25 / ×0,75).
 - Saran harga = median (atau terendah / terendah−1%) dari harga kompetitor yang laku dan stoknya ada.
 

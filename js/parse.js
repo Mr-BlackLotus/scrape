@@ -3,17 +3,18 @@
   const KS = window.KS;
 
   const ALIAS = {
-    name: ['name', 'nama', 'title', 'product_name', 'productname', 'nama_produk', 'produk', 'product', 'item', 'item_name'],
-    price: ['price', 'harga', 'price_value', 'sale_price', 'current_price', 'harga_jual', 'price_min', 'final_price', 'amount'],
+    name: ['name', 'namaproduk', 'nama', 'title', 'product_name', 'productname', 'nama_produk', 'produk', 'product', 'item', 'item_name'],
+    price: ['price', 'hargajual', 'harga', 'price_value', 'sale_price', 'current_price', 'harga_jual', 'price_min', 'final_price', 'amount'],
     stock: ['stock', 'stok', 'qty', 'quantity', 'inventory', 'available', 'stok_tersedia', 'stock_qty'],
-    sold: ['sold', 'terjual', 'sold_count', 'historical_sold', 'total_sold', 'sales', 'jumlah_terjual', 'sold_total', 'item_sold'],
+    sold: ['sold', 'terjualbln', 'terjualbulan', 'terjual_bln', 'sold_month', 'terjual', 'sold_count', 'historical_sold', 'total_sold', 'sales', 'jumlah_terjual', 'sold_total', 'item_sold'],
     sku: ['sku', 'id', 'product_id', 'productid', 'item_id', 'itemid', 'kode', 'code', 'part_number', 'mpn'],
+    variant: ['varian', 'variant', 'variasi', 'variation', 'model_name'],
     url: ['url', 'link', 'product_url', 'href', 'permalink'],
     shop: ['competitor', 'kompetitor', 'shop', 'toko', 'store', 'seller', 'shop_name', 'store_name'],
     date: ['scraped_at', 'scrapedat', 'date', 'tanggal', 'timestamp', 'crawled_at', 'updated_at'],
   };
-  KS.FIELDS = ['name', 'price', 'stock', 'sold', 'sku', 'url'];
-  KS.FIELD_LABEL = { name: 'Nama', price: 'Harga', stock: 'Stok', sold: 'Terjual', sku: 'SKU/ID', url: 'URL' };
+  KS.FIELDS = ['name', 'variant', 'price', 'stock', 'sold', 'sku', 'url'];
+  KS.FIELD_LABEL = { name: 'Nama', variant: 'Varian', price: 'Harga', stock: 'Stok', sold: 'Terjual', sku: 'SKU/ID', url: 'URL' };
 
   const nk = (k) => String(k).toLowerCase().replace(/[^a-z0-9_]/g, '');
 
@@ -87,8 +88,9 @@
 
   KS.normName = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-  /** Ubah item mentah → item standar */
-  KS.normalizeItems = function (rawItems, map) {
+  /** Ubah item mentah → item standar. opts.merge: gabung baris varian jadi 1 produk (per URL tanpa #varian) */
+  KS.normalizeItems = function (rawItems, map, opts = {}) {
+    if (opts.merge && map.variant) return mergeVariants(rawItems, map);
     const out = new Map();
     for (const it of rawItems) {
       const name = String(it[map.name] ?? '').trim();
@@ -109,20 +111,68 @@
     return Array.from(out.values());
   };
 
-  /** Baca File → {fileName, raw, items, mapping, keys, competitorHint, dateHint} */
-  KS.readJSONFile = async function (file) {
-    const text = await file.text();
-    let root;
-    try {
-      root = JSON.parse(text);
-    } catch (e) {
-      // dukung JSON Lines
-      root = text
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map((l) => JSON.parse(l));
+  function mergeVariants(rawItems, map) {
+    const groups = new Map();
+    for (const it of rawItems) {
+      const name = String(it[map.name] ?? '').trim();
+      if (!name) continue;
+      const url = map.url ? String(it[map.url] ?? '').trim() : '';
+      const base = url ? url.split('#')[0] : KS.normName(name);
+      let g = groups.get(base);
+      if (!g) groups.set(base, (g = { base, name, url: url ? base : '', rows: [] }));
+      g.rows.push({
+        v: String(it[map.variant] ?? '').trim(),
+        price: KS.parsePrice(it[map.price]),
+        stock: map.stock ? KS.parseCount(it[map.stock]) : null,
+        sold: map.sold ? KS.parseCount(it[map.sold]) : null,
+      });
     }
-    const raw = findItems(root);
+    return Array.from(groups.values()).map((g) => {
+      const avail = g.rows.filter((r) => r.price != null && (r.stock == null || r.stock > 0));
+      const prices = avail.map((r) => r.price);
+      const stocks = g.rows.map((r) => r.stock).filter((x) => x != null);
+      const solds = g.rows.map((r) => r.sold).filter((x) => x != null);
+      return {
+        k: g.base,
+        name: g.name,
+        price: prices.length ? Math.min(...prices) : null, // harga mulai dari (varian tersedia termurah)
+        pmax: prices.length ? Math.max(...prices) : null,
+        stock: stocks.length ? stocks.reduce((a, b) => a + b, 0) : null,
+        sold: solds.length ? Math.max(...solds) : null, // terjual level produk (sama di semua varian)
+        nv: g.rows.length,
+        url: g.url,
+      };
+    });
+  }
+
+  /** deteksi arti kolom terjual: 'monthly' (per bulan) atau 'cumulative' */
+  KS.detectSoldMode = function (map, keys, raw) {
+    const k = String(map.sold || '').toLowerCase();
+    if (/bln|bulan|month|30/.test(k)) return 'monthly';
+    for (const col of keys) if (/keterangan.*terjual|sold.*(period|unit)/i.test(col)) {
+      const v = String((raw[0] || {})[col] || '').toLowerCase();
+      if (/bulan|month/.test(v)) return 'monthly';
+    }
+    return 'cumulative';
+  };
+
+  /** Baca File (.json/.jsonl/.xlsx/.csv) → {fileName, raw, mapping, keys, competitorHint, date, soldMode, hasVariant} */
+  KS.readJSONFile = KS.readScrapeFile = async function (file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    let raw,
+      root = null;
+    if (ext === 'xlsx' || ext === 'xlsm') raw = await KS.readXLSX(await file.arrayBuffer());
+    else if (ext === 'csv' || ext === 'tsv') raw = KS.rowsToObjects(KS.parseCSV(await file.text()));
+    else if (ext === 'xls') throw new Error('Format .xls lama tidak didukung — simpan ulang sebagai .xlsx atau .csv');
+    else {
+      const text = await file.text();
+      try {
+        root = JSON.parse(text);
+      } catch (e) {
+        root = text.split(/\r?\n/).filter(Boolean).map((l) => JSON.parse(l)); // JSON Lines
+      }
+      raw = findItems(root);
+    }
     const { map, keys } = KS.detectMapping(raw);
     let competitorHint = '',
       dateHint = '';
@@ -133,9 +183,23 @@
     }
     if (!competitorHint && map.shop && raw[0]) competitorHint = String(raw[0][map.shop] || '');
     if (!dateHint && map.date && raw[0]) dateHint = String(raw[0][map.date] || '');
+    // nama file ala "shopee_namatoko_terlaris_p1-1_4.xlsx" → namatoko
+    if (!competitorHint) {
+      const m = file.name.match(/^(?:shopee|tokopedia|tokped|lazada|blibli|bukalapak)[_\- ]+([^_\- .]+)/i);
+      if (m) competitorHint = m[1];
+    }
     let d = dateHint ? new Date(dateHint) : null;
     if (d && isNaN(d) && /^\d{9,13}$/.test(dateHint)) d = new Date(dateHint.length <= 10 ? dateHint * 1000 : +dateHint);
     if (!d || isNaN(d)) d = new Date(file.lastModified || Date.now());
-    return { fileName: file.name, raw, mapping: map, keys, competitorHint, date: d.toISOString() };
+    return {
+      fileName: file.name,
+      raw,
+      mapping: map,
+      keys,
+      competitorHint,
+      date: d.toISOString(),
+      soldMode: KS.detectSoldMode(map, keys, raw),
+      hasVariant: !!(map.variant && map.url),
+    };
   };
 })();

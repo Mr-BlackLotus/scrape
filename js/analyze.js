@@ -27,6 +27,8 @@
     if (!cur) return { rows: [], gone: [], hasPrev: false };
     const pm = prev ? new Map(prev.items.map((i) => [i.k, i])) : null;
     const p2m = prev2 ? new Map(prev2.items.map((i) => [i.k, i])) : null;
+    const monthly = cur.soldMode === 'monthly';
+    const bothMonthly = monthly && prev && prev.soldMode === 'monthly';
     const dt = prev ? gapDays(prev.date, cur.date) : null;
     const dt2 = prev2 ? gapDays(prev2.date, prev.date) : null;
 
@@ -44,6 +46,12 @@
         restock: false,
         status: 'baseline',
       };
+      if (monthly && it.sold != null) {
+        // kolom terjual = penjualan per bulan (30 hari) → laju per hari langsung diketahui
+        r.sales = it.sold;
+        r.rate = it.sold / 30;
+        r.via = 'bulan';
+      }
       if (!prev) return r; // upload pertama: belum ada pembanding
       if (!p) {
         r.status = 'baru';
@@ -53,16 +61,20 @@
         r.priceDelta = it.price - p.price;
         r.pricePct = p.price ? (r.priceDelta / p.price) * 100 : null;
       }
-      const s = soldBetween(p, it);
-      if (s) {
-        r.sales = s.n;
-        r.rate = s.n / dt;
-        r.via = s.via;
-        r.restock = !!s.restock;
-      }
-      if (p2m) {
-        const s2 = soldBetween(p2m.get(it.k), p);
-        if (s2) r.prevRate = s2.n / dt2;
+      if (monthly) {
+        if (bothMonthly && p.sold != null) r.prevRate = p.sold / 30; // cukup 2 scrape untuk tren
+      } else {
+        const s = soldBetween(p, it);
+        if (s) {
+          r.sales = s.n;
+          r.rate = s.n / dt;
+          r.via = s.via;
+          r.restock = !!s.restock;
+        }
+        if (p2m) {
+          const s2 = soldBetween(p2m.get(it.k), p);
+          if (s2) r.prevRate = s2.n / dt2;
+        }
       }
       // status penjualan
       if (r.rate == null) r.status = 'tanpa-data';
@@ -138,7 +150,8 @@
       g.nSellers = sellers.length;
       g.rate = offers.reduce((s, o) => s + (o.rate || 0), 0);
       g.hasRate = offers.some((o) => o.rate != null);
-      g.soldTotal = offers.reduce((s, o) => s + (o.sold || 0), 0);
+      g.soldTotal = offers.reduce((s, o) => s + (o.via === 'bulan' ? 0 : o.sold || 0), 0);
+      g.monthly = offers.some((o) => o.via === 'bulan');
       g.stock = offers.reduce((s, o) => s + (o.stock || 0), 0);
       g.min = allPrices.length ? Math.min(...allPrices) : null;
       g.max = allPrices.length ? Math.max(...allPrices) : null;

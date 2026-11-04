@@ -29,7 +29,7 @@
     /** kirim 1 snapshot (hasil analisis + raw) untuk 1 kompetitor */
     async pushSnapshot(S, comp, snaps, idx, a, onProgress) {
       const cur = snaps[idx];
-      const header = ['SKU', 'Nama Produk', 'Harga', 'Stok', 'Terjual (total)', 'Terjual periode', 'Rate/hari', 'Status', 'Harga sebelumnya', 'Δ Harga', 'Δ %', 'Match ID', 'Match Nama', 'URL', 'Tanggal Scrape'];
+      const header = ['SKU', 'Nama Produk', 'Harga', 'Stok', 'Terjual (kolom scrape)', 'Penjualan periode', 'Rate/hari', 'Status', 'Harga sebelumnya', 'Δ Harga', 'Δ %', 'Match ID', 'Match Nama', 'URL', 'Tanggal Scrape'];
       const rows = a.rows.map((r) => {
         const m = S.matchOf(comp.id, r.k, r.name);
         return [r.k, r.name, r.price, r.stock, r.sold, r.sales, r.rate == null ? '' : +r.rate.toFixed(2), (KS.STATUS[r.status] || {}).label || r.status, r.prevPrice, r.priceDelta, r.pricePct == null ? '' : +r.pricePct.toFixed(1), m ? m.id : '', m ? m.name : '', r.url, cur.date.slice(0, 10)];
@@ -54,7 +54,7 @@
       for (let o = 0; o < ch.length; o += CHUNK) await call(S, 'saveChanges', { rows: ch.slice(o, o + CHUNK) });
       onProgress && onProgress(0.8);
       // raw snapshot untuk restore
-      await call(S, 'saveRaw', { comp, date: cur.date, items: cur.items.map((i) => [i.k, i.name, i.price, i.stock, i.sold, i.url]) });
+      await call(S, 'saveRaw', { comp, date: cur.date, soldMode: cur.soldMode || 'cumulative', items: cur.items.map((i) => [i.k, i.name, i.price, i.stock, i.sold, i.url]) });
       onProgress && onProgress(1);
     },
 

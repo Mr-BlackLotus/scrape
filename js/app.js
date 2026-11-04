@@ -167,6 +167,7 @@
     return `<span class="pc ${up ? 'up' : 'dn'}">${up ? '▲' : '▼'} ${rp(Math.abs(r.priceDelta))}<br><span class="small">${r.pricePct == null ? '' : (up ? '+' : '') + r.pricePct.toFixed(1) + '%'}</span></span>`;
   }
   function salesCell(r) {
+    if (r.via === 'bulan') return `${num(r.sales)}<span class="muted small">/bln${r.prevRate != null ? ' (sebelumnya ' + num(r.prevRate * 30) + ')' : ''}</span>`;
     if (r.rate == null) return r.sold != null ? `<span class="muted" title="Total terjual">${num(r.sold)} total</span>` : '<span class="muted">–</span>';
     return `${num(r.sales)} <span class="muted small">(${num(r.rate)}/hari${r.via === 'stok' ? ', dari stok' : ''})</span>`;
   }
@@ -249,7 +250,7 @@
     const rows = movRows(u.mov);
     box.innerHTML = `<h2>${titles[u.mov]} <span class="muted small">(${num(rows.length)})</span></h2>` +
       (rows.length
-        ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk</th><th class="n">Harga</th><th class="n">Δ Harga</th><th class="n">Terjual periode</th><th>Status</th></tr></thead><tbody>${rows
+        ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk</th><th class="n">Harga</th><th class="n">Δ Harga</th><th class="n">Terjual</th><th>Status</th></tr></thead><tbody>${rows
             .slice(0, 15)
             .map(
               (r) => `<tr><td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)}</td><td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div></td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${salesCell(r)}</td><td>${chip(r.status)}</td></tr>`
@@ -282,7 +283,7 @@
             return `<tr data-act="grp" data-i="${u.page * PAGE + i}" style="cursor:pointer"><td class="n muted">${u.page * PAGE + i + 1}</td>
               <td><div class="nm"><b>${esc(g.name)}</b></div><div class="sm2">${g.match ? `ID ${esc(g.match.id)} · ${Math.round((g.match.score || 0) * 100)}% match` : '<span class="chip down">belum ada di katalog</span>'} ${g.hasNaik ? '<span class="chip up">naik</span>' : ''} ${g.hasBaru ? '<span class="chip new">baru</span>' : ''}</div></td>
               <td>${g.nSellers}/${g.nCarriers} menjual<br>${g.tiers.map(tierChip).join(' ')}</td>
-              <td class="n">${g.hasRate ? num(g.rate) + '/hari' : '<span class="muted">' + num(g.soldTotal) + ' total</span>'}<div class="sm2">${sellers.length ? num(g.soldTotal) + ' total' : ''}</div></td>
+              <td class="n">${g.monthly ? num(g.rate * 30) + '/bln' : g.hasRate ? num(g.rate) + '/hari' : '<span class="muted">' + num(g.soldTotal) + ' total</span>'}<div class="sm2">${!g.monthly && sellers.length ? num(g.soldTotal) + ' total' : ''}</div></td>
               <td class="n">${rp(g.min)}<div class="sm2">${rp(g.med)} · ${rp(g.max)}</div></td>
               <td class="n"><b style="font-size:1.05rem;color:var(--accent)">${rp(g.suggest)}</b></td>
               <td class="n">${g.margin == null ? '<span class="muted">–</span>' : `<span class="pc ${g.margin < 5 ? 'up' : 'dn'}">${g.margin.toFixed(1)}%</span>`}</td></tr>`;
@@ -388,10 +389,10 @@
     const th = (k, l, cls) => `<th class="${cls || ''}" data-act="ksort" data-k="${k}">${l}${u.sort === k ? (u.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
     const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
     $('#ktbl').innerHTML = list.length
-      ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual total', 'n')}${th('rate', 'Terjual periode', 'n')}<th class="nosort">Match katalog</th></tr></thead><tbody>${slice
+      ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual (kolom scrape)', 'n')}${th('rate', 'Penjualan / tren', 'n')}<th class="nosort">Match katalog</th></tr></thead><tbody>${slice
           .map((r) => {
             const m = S.matchOf(r.comp.id, r.k, r.name);
-            return `<tr>${all ? `<td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)}</td>` : ''}<td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div><div class="sm2">${esc(r.k)}</div></td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
+            return `<tr>${all ? `<td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)}</td>` : ''}<td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div><div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div></td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
           })
           .join('')}</tbody></table></div>${pager(list.length, u.page, 'kpage')}`
       : empty('Tidak ada data untuk filter ini.');
@@ -402,8 +403,8 @@
   // =====================================================================
   function viewUpload() {
     const main = $('#main');
-    main.innerHTML = `<h1>Upload Scrape</h1><p class="sub">Upload JSON hasil scraper. Setiap file = satu kompetitor. Data tersimpan di browser, dibandingkan dengan scrape sebelumnya, lalu dikirim ke Google Sheets.</p>
-      <label class="drop" id="drop">Tarik file JSON ke sini, atau klik untuk memilih<br><span class="small">bisa pilih beberapa file sekaligus (.json / .jsonl)</span><input type="file" id="fin" accept=".json,.jsonl,application/json" multiple hidden></label>
+    main.innerHTML = `<h1>Upload Scrape</h1><p class="sub">Upload hasil scraper (.xlsx / .csv / .json). Setiap file = satu kompetitor. Data tersimpan di browser, dibandingkan dengan scrape sebelumnya, lalu dikirim ke Google Sheets.</p>
+      <label class="drop" id="drop">Tarik file hasil scrape ke sini, atau klik untuk memilih<br><span class="small">.xlsx, .csv, atau .json — bisa pilih beberapa file sekaligus</span><input type="file" id="fin" accept=".json,.jsonl,.xlsx,.csv,application/json" multiple hidden></label>
       <div id="pend"></div><div id="res"></div>`;
     const drop = $('#drop');
     const fin = $('#fin');
@@ -421,6 +422,11 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
   };
 
+  function guessTier(txt) {
+    const n = KS.normName(txt).replace(/ /g, '');
+    return S.tiers.find((t) => n.includes(KS.normName(t).replace(/ /g, '').slice(0, 5))) || S.tiers[0];
+  }
+
   async function addFiles(files) {
     for (const f of Array.from(files)) {
       try {
@@ -428,9 +434,9 @@
         const base = KS.normName(f.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d{4}[-_]?\d{2}[-_]?\d{2}.*$/, ''));
         const hint = KS.normName(info.competitorHint || '');
         let comp = S.comps.find((c) => KS.normName(c.name) === hint) || S.comps.find((c) => base && (base.includes(KS.normName(c.name)) || KS.normName(c.name).includes(base)));
-        S.pending.push({ id: KS.uid(), info, compId: comp ? comp.id : '__new', newName: info.competitorHint || f.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d{4}[-_]?\d{2}[-_]?\d{2}.*$/, '').replace(/[_-]+/g, ' ').trim(), newTier: S.tiers[0], date: info.date });
+        S.pending.push({ id: KS.uid(), info, compId: comp ? comp.id : '__new', newName: info.competitorHint || f.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d{4}[-_]?\d{2}[-_]?\d{2}.*$/, '').replace(/[_-]+/g, ' ').trim(), newTier: guessTier(info.competitorHint || f.name), merge: info.hasVariant, soldMode: info.soldMode, date: info.date });
       } catch (e) {
-        toast(`${f.name}: bukan JSON valid (${e.message})`, true);
+        toast(`${f.name}: tidak bisa dibaca (${e.message})`, true);
       }
     }
     fillPending();
@@ -443,7 +449,7 @@
     box.innerHTML =
       S.pending
         .map((p) => {
-          const n = KS.normalizeItems(p.info.raw, p.info.mapping).length;
+          const n = KS.normalizeItems(p.info.raw, p.info.mapping, { merge: p.merge }).length;
           const opts = S.comps.map((c) => `<option value="${c.id}" ${p.compId === c.id ? 'selected' : ''}>${esc(c.name)} — ${esc(c.tier)}</option>`).join('');
           const mapSel = KS.FIELDS.map(
             (f) => `<label class="fld">${KS.FIELD_LABEL[f]}<select data-pmap="${p.id}" data-f="${f}"><option value="">— tidak ada —</option>${p.info.keys.map((k) => `<option ${p.info.mapping[f] === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>`
@@ -452,6 +458,8 @@
             <div class="row"><label class="fld">Kompetitor<select data-pcomp="${p.id}">${opts}<option value="__new" ${p.compId === '__new' ? 'selected' : ''}>+ Kompetitor baru…</option></select></label>
             ${p.compId === '__new' ? `<label class="fld">Nama baru<input type="text" data-pname="${p.id}" value="${esc(p.newName)}"></label><label class="fld">Tier<select data-ptier="${p.id}">${S.tiers.map((t) => `<option ${p.newTier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>` : ''}
             <label class="fld">Tanggal scrape<input type="datetime-local" data-pdate="${p.id}" value="${toLocalInput(p.date)}"></label></div>
+            <div class="row"><label class="fld">Kolom terjual berarti<select data-psold="${p.id}"><option value="monthly" ${p.soldMode === 'monthly' ? 'selected' : ''}>Penjualan per bulan (30 hari terakhir)</option><option value="cumulative" ${p.soldMode === 'cumulative' ? 'selected' : ''}>Total kumulatif sejak awal</option></select></label>
+            ${p.info.mapping.variant ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pmerge="${p.id}" ${p.merge ? 'checked' : ''}> Gabung varian jadi 1 produk (harga = varian tersedia termurah)</label>` : ''}</div>
             <details style="margin-top:10px"><summary class="small muted" style="cursor:pointer">Pemetaan kolom (terdeteksi otomatis)</summary><div class="row">${mapSel}</div></details></div>`;
         })
         .join('') + `<div class="bar" style="margin-top:14px"><button class="btn pri" id="goProc" data-act="process">Proses &amp; simpan ${S.pending.length} file</button><label class="small"><input type="checkbox" id="autosync" ${S.settings.autoSync ? 'checked' : ''}> kirim otomatis ke Google Sheets</label></div><div id="procProg"></div>`;
@@ -475,10 +483,10 @@
             S.comps.push(comp);
           }
         }
-        const items = KS.normalizeItems(p.info.raw, p.info.mapping);
+        const items = KS.normalizeItems(p.info.raw, p.info.mapping, { merge: p.merge });
         if (!items.length) throw new Error(`${p.info.fileName}: tidak ada produk terbaca — cek pemetaan kolom Nama.`);
         const date = new Date(p.date).toISOString();
-        const snap = { id: comp.id + '|' + date, compId: comp.id, date, file: p.info.fileName, items };
+        const snap = { id: comp.id + '|' + date, compId: comp.id, date, file: p.info.fileName, soldMode: p.soldMode, items };
         const arr = (S.snaps[comp.id] = (S.snaps[comp.id] || []).filter((s) => s.id !== snap.id));
         arr.push(snap);
         arr.sort((a, b) => a.date.localeCompare(b.date));
@@ -754,10 +762,12 @@
     else if (t.dataset.pname) p(t.dataset.pname).newName = t.value;
     else if (t.dataset.ptier) p(t.dataset.ptier).newTier = t.value;
     else if (t.dataset.pdate) p(t.dataset.pdate).date = t.value ? new Date(t.value).toISOString() : p(t.dataset.pdate).date;
+    else if (t.dataset.pmerge) { p(t.dataset.pmerge).merge = t.checked; fillPending(); }
+    else if (t.dataset.psold) p(t.dataset.psold).soldMode = t.value;
     else if (t.dataset.pmap) {
       const x = p(t.dataset.pmap);
       x.info.mapping[t.dataset.f] = t.value || undefined;
-      const n = KS.normalizeItems(x.info.raw, x.info.mapping).length;
+      const n = KS.normalizeItems(x.info.raw, x.info.mapping, { merge: x.merge }).length;
       $(`[data-pid="${x.id}"] [data-cnt]`).textContent = `${num(n)} produk terbaca dari ${num(x.info.raw.length)} baris`;
     } else if (t.dataset.act === 'cat-toggle') {
       const c = S.catalogs.find((x) => x.id === t.dataset.id);
@@ -872,7 +882,7 @@
         try {
           setSync('busy', 'Menarik…');
           const j = await KS.sync.pull(S);
-          const snaps = j.snapshots.map((s) => ({ id: s.compId + '|' + s.date, compId: s.compId, date: s.date, file: 'sheet', items: s.items.map((a) => ({ k: String(a[0]), name: a[1], price: a[2] === '' ? null : a[2], stock: a[3] === '' ? null : a[3], sold: a[4] === '' ? null : a[4], url: a[5] || '' })) }));
+          const snaps = j.snapshots.map((s) => ({ id: s.compId + '|' + s.date, compId: s.compId, date: s.date, file: 'sheet', soldMode: s.soldMode || 'cumulative', items: s.items.map((a) => ({ k: String(a[0]), name: a[1], price: a[2] === '' ? null : a[2], stock: a[3] === '' ? null : a[3], sold: a[4] === '' ? null : a[4], url: a[5] || '' })) }));
           await mergeData(j.competitors, snaps);
           for (const c of j.competitors) if (!S.tiers.includes(c.tier)) S.tiers.push(c.tier);
           dirty();

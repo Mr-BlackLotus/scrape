@@ -85,3 +85,4 @@ td .nm{max-width:460px;overflow-wrap:anywhere} td .sm2{font-size:.78rem;color:va
 .tabs button{border:1px solid var(--line);background:var(--panel);padding:5px 12px;border-radius:99px;cursor:pointer;font-size:.85rem}
 .tabs button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .help{font-size:.85rem;color:var(--muted);line-height:1.5} .help code{background:var(--flat-bg);padding:1px 5px;border-radius:5px}
+a{color:var(--accent);text-underline-offset:2px} a:hover{text-decoration:none}

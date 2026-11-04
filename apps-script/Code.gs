@@ -137,7 +137,7 @@ function saveChanges_(b) {
 
 // ---------- snapshot mentah (untuk restore) ----------
 function saveRaw_(b) {
-  var sh = sheet_(RAW_SHEET, ['compId', 'date', 'part', 'parts', 'data']);
+  var sh = sheet_(RAW_SHEET, ['compId', 'date', 'part', 'parts', 'data', 'soldMode']);
   var c = b.comp;
   // hapus baris lama dengan comp+tanggal yang sama
   var vals = sh.getDataRange().getValues();
@@ -145,8 +145,8 @@ function saveRaw_(b) {
   var s = JSON.stringify(b.items);
   var parts = Math.max(1, Math.ceil(s.length / CELL_LIMIT));
   var out = [];
-  for (var p = 0; p < parts; p++) out.push([c.id, b.date, p, parts, s.substr(p * CELL_LIMIT, CELL_LIMIT)]);
-  sh.getRange(sh.getLastRow() + 1, 1, out.length, 5).setNumberFormat('@').setValues(out);
+  for (var p = 0; p < parts; p++) out.push([c.id, b.date, p, parts, s.substr(p * CELL_LIMIT, CELL_LIMIT), b.soldMode || 'cumulative']);
+  sh.getRange(sh.getLastRow() + 1, 1, out.length, 6).setNumberFormat('@').setValues(out);
   upsertConfig_(c, b.items.length, new Date());
   return { ok: true, parts: parts };
 }
@@ -165,11 +165,11 @@ function loadAll_() {
     var map = {};
     for (var j = 1; j < r.length; j++) {
       var k = r[j][0] + '|' + r[j][1];
-      (map[k] = map[k] || { compId: String(r[j][0]), date: String(r[j][1]), parts: [] }).parts[Number(r[j][2])] = String(r[j][4]);
+      (map[k] = map[k] || { compId: String(r[j][0]), date: String(r[j][1]), soldMode: String(r[j][5] || 'cumulative'), parts: [] }).parts[Number(r[j][2])] = String(r[j][4]);
     }
     for (var key in map) {
       try {
-        snaps.push({ compId: map[key].compId, date: map[key].date, items: JSON.parse(map[key].parts.join('')) });
+        snaps.push({ compId: map[key].compId, date: map[key].date, soldMode: map[key].soldMode, items: JSON.parse(map[key].parts.join('')) });
       } catch (e) {}
     }
   }
