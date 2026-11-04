@@ -1,0 +1,382 @@
+{
+ "competitor": "TokoAgresif",
+ "scraped_at": "2026-10-27T09:00:00+07:00",
+ "products": [
+  {
+   "sku": "TOK-158394",
+   "name": "Asus TUF Z390-Pro Gaming Motherboard",
+   "price": 1503900,
+   "stock": 31,
+   "sold": 38,
+   "url": "https://example.com/tokoagresif/158394"
+  },
+  {
+   "sku": "TOK-153962",
+   "name": "ASRock Z370 Extreme4 (LGA1151V2, Z370, DDR4, USB3.1, SATA3)",
+   "price": 649100,
+   "stock": 18,
+   "sold": 338,
+   "url": "https://example.com/tokoagresif/153962"
+  },
+  {
+   "sku": "TOK-10580",
+   "name": "Asus Sabertooth Z170 Mark 1 (LGA1151,Z170, DDR4)",
+   "price": 2619800,
+   "stock": 24,
+   "sold": 245,
+   "url": "https://example.com/tokoagresif/10580"
+  },
+  {
+   "sku": "TOK-174289",
+   "name": "Gigabyte Z690 Aorus PRO (LGA1700, Z690, DDR5, USB3.2, SATA3)",
+   "price": 1501900,
+   "stock": 25,
+   "sold": 347,
+   "url": "https://example.com/tokoagresif/174289"
+  },
+  {
+   "sku": "TOK-174400",
+   "name": "Asus ROG Strix Z690-A Gaming WIFI D4 Motherboard",
+   "price": 1740000,
+   "stock": 14,
+   "sold": 186,
+   "url": "https://example.com/tokoagresif/174400"
+  },
+  {
+   "sku": "TOK-170439",
+   "name": "Gigabyte Z590I Aorus Ultra (LGA1200, Z590, DDR4, USB3.2, SATA3)",
+   "price": 1100600,
+   "stock": 23,
+   "sold": 40,
+   "url": "https://example.com/tokoagresif/170439"
+  },
+  {
+   "sku": "TOK-170799",
+   "name": "ASRock H510M-HDV (LGA1200, H510, DDR4, USB3.2, SATA3)",
+   "price": 1248900,
+   "stock": 2,
+   "sold": 388,
+   "url": "https://example.com/tokoagresif/170799"
+  },
+  {
+   "sku": "TOK-153232",
+   "name": "Asus TUF X299 Mark 2 Motherboard",
+   "price": 1361500,
+   "stock": 27,
+   "sold": 259,
+   "url": "https://example.com/tokoagresif/153232"
+  },
+  {
+   "sku": "TOK-170101",
+   "name": "Asus TUF Gaming B460M-PRO Motherboard",
+   "price": 754400,
+   "stock": 21,
+   "sold": 286,
+   "url": "https://example.com/tokoagresif/170101"
+  },
+  {
+   "sku": "TOK-170638",
+   "name": "ECS H110I-C4P (LGA1151, Intel H110, DDR4)",
+   "price": 1476800,
+   "stock": 24,
+   "sold": 227,
+   "url": "https://example.com/tokoagresif/170638"
+  },
+  {
+   "sku": "TOK-10626",
+   "name": "Asus ROG STRIX X99 Gaming Motherboard",
+   "price": 2513700,
+   "stock": 13,
+   "sold": 200,
+   "url": "https://example.com/tokoagresif/10626"
+  },
+  {
+   "sku": "TOK-160642",
+   "name": "Gigabyte C621-SU8 (LGA 3647, C621, DDR4)",
+   "price": 1942000,
+   "stock": 4,
+   "sold": 49,
+   "url": "https://example.com/tokoagresif/160642"
+  },
+  {
+   "sku": "TOK-166054",
+   "name": "Gigabyte B460M Aorus Pro Motherboard",
+   "price": 1089000,
+   "stock": 20,
+   "sold": 154,
+   "url": "https://example.com/tokoagresif/166054"
+  },
+  {
+   "sku": "TOK-170585",
+   "name": "Asus ROG STRIX B560-F Gaming WIFI Motherboard",
+   "price": 482500,
+   "stock": 14,
+   "sold": 103,
+   "url": "https://example.com/tokoagresif/170585"
+  },
+  {
+   "sku": "TOK-170837",
+   "name": "Gigabyte Z590M Motherboard",
+   "price": 1419100,
+   "stock": 14,
+   "sold": 224,
+   "url": "https://example.com/tokoagresif/170837"
+  },
+  {
+   "sku": "TOK-10608",
+   "name": "Asus H170 Pro-Gaming Motherboard",
+   "price": 2454200,
+   "stock": 14,
+   "sold": 180,
+   "url": "https://example.com/tokoagresif/10608"
+  },
+  {
+   "sku": "TOK-10698",
+   "name": "Biostar TB85-BTC (LGA1150, Intel B85, DDR3) - Bundled Riser 6Pcs",
+   "price": 896500,
+   "stock": 13,
+   "sold": 321,
+   "url": "https://example.com/tokoagresif/10698"
+  },
+  {
+   "sku": "TOK-10598",
+   "name": "Asus B150 Pro Gaming/AURA (LGA1151,B150, DDR4)",
+   "price": 2825300,
+   "stock": 0,
+   "sold": 238,
+   "url": "https://example.com/tokoagresif/10598"
+  },
+  {
+   "sku": "TOK-10817",
+   "name": "Gigabyte GA-P81-D3 Motherboard",
+   "price": 2548200,
+   "stock": 9,
+   "sold": 206,
+   "url": "https://example.com/tokoagresif/10817"
+  },
+  {
+   "sku": "TOK-10801",
+   "name": "Gigabyte GA-Z97X-Gaming 7 Motherboard",
+   "price": 812800,
+   "stock": 20,
+   "sold": 38,
+   "url": "https://example.com/tokoagresif/10801"
+  },
+  {
+   "sku": "TOK-159625",
+   "name": "Gigabyte B360 Aorus Gaming 3 WIFI Motherboard",
+   "price": 1143900,
+   "stock": 4,
+   "sold": 260,
+   "url": "https://example.com/tokoagresif/159625"
+  },
+  {
+   "sku": "TOK-10597",
+   "name": "Asus B150I Pro Gaming/WIFI/AURA Motherboard",
+   "price": 1036000,
+   "stock": 26,
+   "sold": 33,
+   "url": "https://example.com/tokoagresif/10597"
+  },
+  {
+   "sku": "TOK-150212",
+   "name": "Biostar Racing Z270GT4 Motherboard",
+   "price": 783800,
+   "stock": 13,
+   "sold": 279,
+   "url": "https://example.com/tokoagresif/150212"
+  },
+  {
+   "sku": "TOK-10582",
+   "name": "Asus Z170 Deluxe (LGA1151,Z170, DDR4)",
+   "price": 804400,
+   "stock": 26,
+   "sold": 30,
+   "url": "https://example.com/tokoagresif/10582"
+  },
+  {
+   "sku": "TOK-10630",
+   "name": "Asus X99-A II (LGA2011v3, Intel X99, Quad Channel DDR4, PCIE 3.0, SATA3, USB3)",
+   "price": 665700,
+   "stock": 16,
+   "sold": 199,
+   "url": "https://example.com/tokoagresif/10630"
+  },
+  {
+   "sku": "TOK-10583",
+   "name": "Asus Z170 Pro (LGA1151,Z170, DDR4)",
+   "price": 983900,
+   "stock": 30,
+   "sold": 182,
+   "url": "https://example.com/tokoagresif/10583"
+  },
+  {
+   "sku": "TOK-174292",
+   "name": "Gigabyte Z690 Gaming X DDR4 Motherboard",
+   "price": 2711800,
+   "stock": 1,
+   "sold": 64,
+   "url": "https://example.com/tokoagresif/174292"
+  },
+  {
+   "sku": "TOK-10592",
+   "name": "Asus Z170M-E (LGA1151,Z170, DDR3)",
+   "price": 2277500,
+   "stock": 13,
+   "sold": 262,
+   "url": "https://example.com/tokoagresif/10592"
+  },
+  {
+   "sku": "TOK-10731",
+   "name": "ECS H61H2-MV Motherboard",
+   "price": 2260800,
+   "stock": 1,
+   "sold": 62,
+   "url": "https://example.com/tokoagresif/10731"
+  },
+  {
+   "sku": "TOK-172119",
+   "name": "ECS H110M4-C23 (LGA1151, Intel H110, DDR4)",
+   "price": 1723200,
+   "stock": 12,
+   "sold": 359,
+   "url": "https://example.com/tokoagresif/172119"
+  },
+  {
+   "sku": "TOK-156469",
+   "name": "Asus TUF B360M-PLUS Gaming (LGA1151V2, B360, DDR4, USB3.1, SATA3)",
+   "price": 1033200,
+   "stock": 3,
+   "sold": 275,
+   "url": "https://example.com/tokoagresif/156469"
+  },
+  {
+   "sku": "TOK-176588",
+   "name": "ASRock B660M Pro RS Motherboard",
+   "price": 1795800,
+   "stock": 26,
+   "sold": 20,
+   "url": "https://example.com/tokoagresif/176588"
+  },
+  {
+   "sku": "TOK-10569",
+   "name": "Asus Maximus VIII Hero Alpha Motherboard",
+   "price": 2430000,
+   "stock": 19,
+   "sold": 81,
+   "url": "https://example.com/tokoagresif/10569"
+  },
+  {
+   "sku": "TOK-10739",
+   "name": "ECS H81H3-M3S (LGA1150, Intel H81, DDR3)",
+   "price": 1412600,
+   "stock": 26,
+   "sold": 90,
+   "url": "https://example.com/tokoagresif/10739"
+  },
+  {
+   "sku": "TOK-169325",
+   "name": "Biostar Z490A Silver (LGA1200, Z490, DDR4, USB3.2, SATA3)",
+   "price": 1914300,
+   "stock": 15,
+   "sold": 287,
+   "url": "https://example.com/tokoagresif/169325"
+  },
+  {
+   "sku": "TOK-158392",
+   "name": "Asus ROG Maximus XI Hero Motherboard",
+   "price": 2333300,
+   "stock": 14,
+   "sold": 348,
+   "url": "https://example.com/tokoagresif/158392"
+  },
+  {
+   "sku": "TOK-10605",
+   "name": "Asus B150M-A D3 (LGA1151,B150, DDR3)",
+   "price": 1161500,
+   "stock": 33,
+   "sold": 210,
+   "url": "https://example.com/tokoagresif/10605"
+  },
+  {
+   "sku": "TOK-10633",
+   "name": "Asus RAMPAGE V EDITION 10 Motherboard",
+   "price": 1281500,
+   "stock": 14,
+   "sold": 192,
+   "url": "https://example.com/tokoagresif/10633"
+  },
+  {
+   "sku": "TOK-10594",
+   "name": "Asus PRIME B250-PLUS (LGA1151,B250, DDR4)",
+   "price": 570400,
+   "stock": 31,
+   "sold": 148,
+   "url": "https://example.com/tokoagresif/10594"
+  },
+  {
+   "sku": "TOK-10819",
+   "name": "Gigabyte G1.Sniper B6 Motherboard",
+   "price": 2150500,
+   "stock": 18,
+   "sold": 314,
+   "url": "https://example.com/tokoagresif/10819"
+  },
+  {
+   "sku": "TOK-10667",
+   "name": "Asus H81M-C Motherboard",
+   "price": 1729800,
+   "stock": 25,
+   "sold": 375,
+   "url": "https://example.com/tokoagresif/10667"
+  },
+  {
+   "sku": "TOK-159473",
+   "name": "Gigabyte Z390 I Aorus Pro Wifi (LGA1151V2, Z390, DDR4, USB3.1, SATA3)",
+   "price": 1443000,
+   "stock": 9,
+   "sold": 11,
+   "url": ""
+  },
+  {
+   "sku": "TOK-10622",
+   "name": "Asus H61M-E Motherboard",
+   "price": 1258200,
+   "stock": 22,
+   "sold": 135,
+   "url": "https://example.com/tokoagresif/10622"
+  },
+  {
+   "sku": "TOK-10688",
+   "name": "Biostar H110MHV3 Motherboard",
+   "price": 1704600,
+   "stock": 19,
+   "sold": 317,
+   "url": "https://example.com/tokoagresif/10688"
+  },
+  {
+   "sku": "TOK-159440",
+   "name": "Biostar B360M-D2V Motherboard",
+   "price": 425000,
+   "stock": 19,
+   "sold": 193,
+   "url": "https://example.com/tokoagresif/159440"
+  },
+  {
+   "sku": "TOK-10781",
+   "name": "Gigabyte GA-Gaming B8 (LGA1151, B250, DDR4)",
+   "price": 521000,
+   "stock": 18,
+   "sold": 10,
+   "url": ""
+  },
+  {
+   "sku": "TOK-154621",
+   "name": "ASRock X299 Extreme 4 (LGA2066, X299, DDR4)",
+   "price": 1820000,
+   "stock": 8,
+   "sold": 16,
+   "url": ""
+  }
+ ]
+}
