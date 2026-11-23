@@ -28,3 +28,8 @@ Array produk, atau objek yang berisi array (`products`, `items`, `data`, …). C
 - Saran harga = median (atau terendah / terendah−1%) dari harga kompetitor yang laku dan stoknya ada.
 
 Data utama disimpan di IndexedDB browser; Google Sheets jadi penyimpanan cloud & bisa ditarik ulang (*Tarik data dari Sheets*). Gunakan *Backup* di Pengaturan untuk salinan JSON.
+
+## Backup & restore
+- **Semua kompetitor**: Pengaturan → *Download backup semua kompetitor (JSON)*.
+- **Satu kompetitor**: tombol *Backup toko ini* di halaman Kompetitor, atau *Backup* di tabel Kompetitor (Pengaturan). File berisi seluruh riwayat snapshot toko itu dan pencocokan SKU-nya, tidak mencampur toko lain.
+- **Restore**: *Restore* di halaman Kompetitor atau Pengaturan, file dari kedua jenis backup bisa dipakai. Sifatnya menggabung: snapshot yang sudah ada dilewati, kompetitor yang belum ada dibuat lagi, pencocokan SKU yang sudah ada tidak ditimpa. Restore file yang sama dua kali aman.

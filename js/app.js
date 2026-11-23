@@ -356,6 +356,8 @@
     const head = meta
       ? `<div class="bar"><h2 style="margin:0">${esc(meta.c.name)}</h2>${tierChip(meta.c.tier)}<span class="grow"></span>
           <label class="small muted">Snapshot <select id="ksnap">${meta.sn.map((s, i) => `<option value="${i}" ${i === meta.idx ? 'selected' : ''}>${fmtDate(s.date)} · ${num(s.items.length)} SKU</option>`).join('')}</select></label>
+          <button class="btn sm" data-act="backup-comp" data-id="${meta.c.id}" title="Simpan seluruh riwayat toko ini ke file JSON">Backup toko ini</button>
+          <label class="btn sm" title="Pulihkan dari file backup JSON (digabung, tidak menimpa)">Restore<input type="file" id="rfile2" accept=".json" hidden></label>
           <button class="btn sm danger" data-act="del-snap">Hapus snapshot</button></div>`
       : `<div class="bar"><h2 style="margin:0">Semua kompetitor</h2><span class="muted small">snapshot terakhir tiap toko</span></div>`;
     $('#kmain').innerHTML = `${head}
@@ -365,6 +367,8 @@
     $('#kq').oninput = (e) => ((u.q = e.target.value), (u.page = 0), fillKTable());
     const sel = $('#ksnap');
     if (sel) sel.onchange = (e) => ((u.snap = +e.target.value), (u.snapComp = meta.c.id), (u.page = 0), fillKomp());
+    const rf2 = $('#rfile2');
+    if (rf2) rf2.onchange = restoreBackup;
     fillKTable();
   }
 
@@ -706,38 +710,73 @@
         <label class="fld">Auto-match jika skor ≥<input type="number" step="0.05" min="0.5" max="1" id="smatch" value="${st.matchAuto}"></label></div>
         <div class="bar" style="margin-top:12px"><button class="btn pri" data-act="save-rules">Simpan aturan</button></div>
         <p class="help">Penjualan dihitung dari selisih kolom <i>terjual</i> antar scrape; jika tidak ada, dari penurunan <i>stok</i> (restock tidak dihitung sebagai penjualan). Status naik/turun membandingkan laju per hari periode ini vs periode sebelumnya (butuh ≥3 scrape).</p></div></div>
-      <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td><button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
+      <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td style="white-space:nowrap"><button class="btn sm" data-act="backup-comp" data-id="${c.id}">Backup</button> <button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
         <div class="bar" style="margin-top:12px"><input type="text" id="ntier" placeholder="Tier baru (mis. Premium)"><button class="btn" data-act="add-tier">Tambah tier</button></div></div>
-      <div class="card"><h2>Backup</h2><div class="bar"><button class="btn" data-act="backup">Download backup (JSON)</button><label class="btn">Restore backup<input type="file" id="rfile" accept=".json" hidden></label><button class="btn danger" data-act="reset">Hapus semua data lokal</button></div></div>`;
+      <div class="card"><h2>Backup</h2><div class="bar"><button class="btn" data-act="backup">Download backup semua kompetitor (JSON)</button><label class="btn">Restore backup<input type="file" id="rfile" accept=".json" hidden></label><button class="btn danger" data-act="reset">Hapus semua data lokal</button></div>
+        <p class="help">Backup satu toko tersedia di tabel Kompetitor di atas dan di halaman Kompetitor. Restore menggabungkan ke data yang ada: snapshot yang sudah ada dilewati, kompetitor yang belum ada dibuat otomatis, tidak ada data yang ditimpa.</p></div>`;
     $('#rfile').onchange = restoreBackup;
     $$('[data-cname]').forEach((i) => (i.onchange = () => ((compById(i.dataset.cname).name = i.value.trim() || compById(i.dataset.cname).name), dirty())));
     $$('[data-ctier]').forEach((i) => (i.onchange = () => ((compById(i.dataset.ctier).tier = i.value), dirty())));
   }
 
   async function restoreBackup(e) {
+    const input = e.target;
     try {
-      const j = JSON.parse(await e.target.files[0].text());
-      await mergeData(j.comps || [], j.snaps || []);
-      if (j.matches) Object.assign(S.matches, j.matches);
+      const j = JSON.parse(await input.files[0].text());
+      if (!j || !Array.isArray(j.comps) || !Array.isArray(j.snaps)) throw new Error('bukan file backup Pantau Kompetitor');
+      const r = await mergeData(j.comps, j.snaps);
+      if (j.matches) for (const [k, v] of Object.entries(j.matches)) if (!(k in S.matches)) S.matches[k] = v;
       if (j.tiers) S.tiers = [...new Set([...S.tiers, ...j.tiers])];
       dirty();
-      toast('Backup dipulihkan');
+      const names = j.comps.map((c) => c.name).slice(0, 3).join(', ') + (j.comps.length > 3 ? ', …' : '');
+      toast(`Restore ${names}: ${r.added} snapshot ditambahkan, ${r.skipped} sudah ada${r.newComps ? `, ${r.newComps} kompetitor baru` : ''}`);
       render();
     } catch (er) {
       toast('Backup tidak valid: ' + er.message, true);
+    } finally {
+      input.value = '';
     }
   }
+  /** isi file backup. compId diisi = satu toko; kosong = semua. */
+  function backupPayload(compId) {
+    const comps = compId ? S.comps.filter((c) => c.id === compId) : S.comps;
+    const ids = new Set(comps.map((c) => c.id));
+    const matches = {};
+    for (const [k, v] of Object.entries(S.matches)) if (ids.has(k.split('|')[0])) matches[k] = v;
+    return {
+      format: 'pantau-kompetitor-backup',
+      version: 2,
+      scope: compId ? 'competitor' : 'all',
+      exportedAt: new Date().toISOString(),
+      comps,
+      tiers: compId ? [...new Set(comps.map((c) => c.tier))] : S.tiers,
+      matches,
+      snaps: comps.flatMap((c) => S.snaps[c.id] || []),
+    };
+  }
   async function mergeData(comps, snaps) {
-    for (const c of comps) if (!compById(c.id)) S.comps.push({ id: c.id, name: c.name, tier: c.tier });
+    let added = 0,
+      skipped = 0,
+      newComps = 0;
+    for (const c of comps)
+      if (!compById(c.id)) {
+        S.comps.push({ id: c.id, name: c.name, tier: c.tier });
+        newComps++;
+      }
     for (const s of snaps) {
       if (!compById(s.compId)) continue;
       const arr = (S.snaps[s.compId] = S.snaps[s.compId] || []);
-      if (arr.some((x) => x.id === s.id)) continue;
+      if (arr.some((x) => x.id === s.id)) {
+        skipped++;
+        continue;
+      }
       arr.push(s);
       arr.sort((a, b) => a.date.localeCompare(b.date));
       await KS.db.snapPut(s);
+      added++;
     }
     S.dirty = true;
+    return { added, skipped, newComps };
   }
 
   // =====================================================================
@@ -921,7 +960,14 @@
         return viewSettings();
       }
       case 'backup':
-        return KS.download('backup-kompetitor.json', JSON.stringify({ comps: S.comps, tiers: S.tiers, matches: S.matches, snaps: Object.values(S.snaps).flat() }), 'application/json');
+        return KS.download(`backup-kompetitor-semua-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(backupPayload()), 'application/json');
+      case 'backup-comp': {
+        const c = compById(d.id);
+        if (!c) return;
+        const n = (S.snaps[c.id] || []).length;
+        KS.download(`backup-${KS.slug(c.name) || 'toko'}-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(backupPayload(c.id)), 'application/json');
+        return toast(`Backup ${c.name}: ${n} snapshot`);
+      }
       case 'reset':
         if (!confirm('Hapus SEMUA data lokal di browser ini? (data di Google Sheets tidak terhapus)')) return;
         await KS.db.clearAll();
