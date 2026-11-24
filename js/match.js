@@ -141,7 +141,7 @@
 
   const w = (idx, t) => idx.idf.get(t) ?? Math.log(1 + idx.N); // token tidak dikenal = langka
   const attrOf = (idx, i) => idx.attrs[i] || (idx.attrs[i] = analyze(idx.rows[i][1], idx.brands));
-  const sumW = (idx, arr) => arr.reduce((s, t) => s + w(idx, t), 0);
+  const sumW = (idx, arr) => arr.reduce((s, t) => s + w(idx, t) * (GENERIC.has(t) && !TECH.has(t) ? 0.35 : 1), 0);
 
   /** bandingkan dua atribut → { sc, caps, why } */
   function compareAttrs(idx, q, c) {
@@ -155,26 +155,34 @@
     for (const t of c.core) if (qs.has(t)) shared += w(idx, t);
     const qSum = sumW(idx, q.core),
       cSum = sumW(idx, c.core);
-    const core = qSum && cSum ? 0.6 * ((2 * shared) / (qSum + cSum)) + 0.4 * (shared / Math.min(qSum, cSum)) : 0;
+    let core = qSum && cSum ? 0.35 * ((2 * shared) / (qSum + cSum)) + 0.65 * (shared / Math.min(qSum, cSum)) : 0;
+    core = Math.pow(core, 1.35); // overlap lemah = skor jauh lebih rendah
+    const cs = new Set(c.core);
+    let modelMul = 1;
     if (q.models.length) {
-      const cs = new Set(c.core);
       const hit = q.models.filter((m) => cs.has(m));
-      if (!hit.length) lim(0.55);
+      if (!hit.length) lim(0.45), (modelMul = 0.8);
+      else if (hit.length < q.models.length) modelMul = 0.95;
+      if (hit.length) core = Math.max(core, 0.62 * Math.min(1, hit.length / Math.min(q.models.length, 2)));
       why.push({ l: 'Tipe', s: hit.length === q.models.length ? 'ok' : hit.length ? 'part' : 'bad', t: q.models.join(' ').toUpperCase() });
     } else why.push({ l: 'Tipe', s: core >= 0.8 ? 'ok' : core >= 0.5 ? 'part' : 'bad', t: q.type.slice(0, 4).join(' ') });
+    // katalog punya kode tipe yang tidak ada di query (mis. E1404TA vs E1404FA) = kemungkinan varian lain
+    const pre = (a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return i; };
+    const extra = c.models.filter((m) => !qs.has(m) && q.models.some((x) => !cs.has(x) && pre(x, m) >= 4));
+    if (extra.length && q.models.length) modelMul *= extra.length > 1 ? 0.82 : 0.9;
 
     // merek
-    let brandB = q.brand || c.brand ? 0.05 : 0.1;
+    let brandB = q.brand || c.brand ? 0.97 : 1;
     if (q.brand && c.brand) {
-      if (q.brand === c.brand) (brandB = 0.1), why.unshift({ l: 'Merek', s: 'ok', t: q.brand });
-      else (brandB = 0), lim(0.4), why.unshift({ l: 'Merek', s: 'bad', t: `${q.brand} ≠ ${c.brand}` });
+      if (q.brand === c.brand) (brandB = 1), why.unshift({ l: 'Merek', s: 'ok', t: q.brand });
+      else (brandB = 0.5), lim(0.4), why.unshift({ l: 'Merek', s: 'bad', t: `${q.brand} ≠ ${c.brand}` });
     } else if (q.brand) why.unshift({ l: 'Merek', s: 'na', t: `${q.brand} (katalog tidak menyebut)` });
 
     // warna
-    let colorB = q.colors.length || c.colors.length ? 0.04 : 0.08;
+    let colorB = q.colors.length || c.colors.length ? 0.97 : 1;
     if (q.colors.length && c.colors.length) {
-      if (q.colors.some((x) => c.colors.includes(x))) (colorB = 0.08), why.push({ l: 'Warna', s: 'ok', t: q.colors.map((x) => COLOR_ID[x]).join('/') });
-      else (colorB = 0), lim(0.62), why.push({ l: 'Warna', s: 'bad', t: `${COLOR_ID[q.colors[0]]} ≠ ${COLOR_ID[c.colors[0]]}` });
+      if (q.colors.some((x) => c.colors.includes(x))) (colorB = 1), why.push({ l: 'Warna', s: 'ok', t: q.colors.map((x) => COLOR_ID[x]).join('/') });
+      else (colorB = 0.7), lim(0.62), why.push({ l: 'Warna', s: 'bad', t: `${COLOR_ID[q.colors[0]]} ≠ ${COLOR_ID[c.colors[0]]}` });
     } else if (q.colors.length) why.push({ l: 'Warna', s: 'na', t: `${COLOR_ID[q.colors[0]]} (katalog tidak menyebut)` });
 
     // spesifikasi: sama jika ada nilai yang sama; beda jika sama-sama menyebut tapi tidak ada yang sama
@@ -187,7 +195,7 @@
       else if (b) (lim(0.6), why.push({ l: label, s: 'bad', t: `${a.map(f).join('/')} ≠ ${b.map(f).join('/')}` }));
       else why.push({ l: label, s: 'na', t: `${a.map(f).join('/')} (katalog tidak menyebut)` });
     }
-    const score = Math.min(cap.v, 0.82 * core + brandB + colorB);
+    const score = Math.min(cap.v, core * modelMul * brandB * colorB);
     return { score, why };
   }
 
