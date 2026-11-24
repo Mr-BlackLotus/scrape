@@ -480,7 +480,7 @@
         const base = KS.normName(f.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d{4}[-_]?\d{2}[-_]?\d{2}.*$/, ''));
         const hint = KS.normName(info.competitorHint || '');
         let comp = S.comps.find((c) => KS.normName(c.name) === hint) || S.comps.find((c) => base && (base.includes(KS.normName(c.name)) || KS.normName(c.name).includes(base)));
-        S.pending.push({ id: KS.uid(), info, compId: comp ? comp.id : '__new', newName: info.competitorHint || f.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d{4}[-_]?\d{2}[-_]?\d{2}.*$/, '').replace(/[_-]+/g, ' ').trim(), newTier: guessTier(info.competitorHint || f.name), merge: info.hasVariant, soldMode: info.soldMode, date: info.date });
+        S.pending.push({ id: KS.uid(), info, compId: comp ? comp.id : '__new', newName: info.competitorHint || f.name.replace(/\.[^.]+$/, '').replace(/[_-]?\d{4}[-_]?\d{2}[-_]?\d{2}.*$/, '').replace(/[_-]+/g, ' ').trim(), newTier: guessTier(info.competitorHint || f.name), merge: false, soldMode: info.soldMode, date: info.date });
       } catch (e) {
         toast(`${f.name}: tidak bisa dibaca (${e.message})`, true);
       }
@@ -505,7 +505,7 @@
             ${p.compId === '__new' ? `<label class="fld">Nama baru<input type="text" data-pname="${p.id}" value="${esc(p.newName)}"></label><label class="fld">Kategori<select data-pcat="${p.id}">${catOpts(p.newCat, '<option value="__new">+ Kategori baru…</option>')}</select></label><label class="fld">Tier<select data-ptier="${p.id}">${S.tiers.map((t) => `<option ${p.newTier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>` : ''}
             <label class="fld">Tanggal scrape<input type="datetime-local" data-pdate="${p.id}" value="${toLocalInput(p.date)}"></label></div>
             <div class="row"><label class="fld">Kolom terjual berarti<select data-psold="${p.id}"><option value="monthly" ${p.soldMode === 'monthly' ? 'selected' : ''}>Penjualan per bulan (30 hari terakhir)</option><option value="cumulative" ${p.soldMode === 'cumulative' ? 'selected' : ''}>Total kumulatif sejak awal</option></select></label>
-            ${p.info.mapping.variant ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pmerge="${p.id}" ${p.merge ? 'checked' : ''}> Gabung varian jadi 1 produk (harga = varian tersedia termurah)</label>` : ''}</div>
+            ${p.info.mapping.variant ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pmerge="${p.id}" ${p.merge ? 'checked' : ''}> Gabung varian jadi 1 produk (harga = varian termurah). Jika tidak dicentang, setiap varian jadi baris sendiri dan dicocokkan ke SKU-nya sendiri</label>` : ''}</div>
             <details style="margin-top:10px"><summary class="small muted" style="cursor:pointer">Pemetaan kolom (terdeteksi otomatis)</summary><div class="row">${mapSel}</div></details></div>`;
         })
         .join('') + `<div class="bar" style="margin-top:14px"><button class="btn pri" id="goProc" data-act="process">Proses &amp; simpan ${S.pending.length} file</button><label class="small"><input type="checkbox" id="autosync" ${S.settings.autoSync ? 'checked' : ''}> kirim otomatis ke Google Sheets</label></div><div id="procProg"></div>`;

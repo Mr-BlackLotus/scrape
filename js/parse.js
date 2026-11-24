@@ -97,10 +97,13 @@
       if (!name) continue;
       const url = map.url ? String(it[map.url] ?? '') : '';
       const skuRaw = map.sku ? it[map.sku] : it.__key;
-      const key = String(skuRaw ?? '').trim() || url || KS.normName(name);
+      const vr = map.variant ? String(it[map.variant] ?? '').trim() : '';
+      const hasV = vr && !/^[-–—]$/.test(vr);
+      let key = String(skuRaw ?? '').trim() || url || KS.normName(name);
+      if (hasV && !key.includes(vr)) key += '#' + vr; // tiap varian = 1 baris sendiri
       const o = {
         k: key,
-        name,
+        name: hasV ? name + ' ▸ ' + vr : name, // "▸ varian" dibaca matcher: gram/kapasitas/warna varian dipakai untuk mencocokkan
         price: KS.parsePrice(it[map.price]),
         stock: map.stock ? KS.parseCount(it[map.stock]) : null,
         sold: map.sold ? KS.parseCount(it[map.sold]) : null,

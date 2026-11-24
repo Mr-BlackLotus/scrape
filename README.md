@@ -16,6 +16,7 @@ Web statis (tanpa build) untuk memantau scrape toko kompetitor: upload JSON → 
   - Skor dihitung multiplikatif (kemiripan tipe × merek × warna), jadi produk yang tidak ada di katalog mendapat skor rendah (±5–20%) dan tidak lolos auto. Kode model yang hampir sama (mis. E1404TA vs E1404FA) diturunkan, dan kata pemasaran (resmi, garansi, print, scan) berbobot ringan.
   - Setelah update, klik **Hitung ulang otomatis** di SKU Matcher supaya match lama dihitung dengan aturan baru (match manual tidak berubah).
   - Tombol di SKU Matcher: **Hitung ulang otomatis** (match manual tetap), **Match ulang semua** (termasuk manual), **Hapus semua match** (snapshot tidak terhapus).
+  - **Varian produk**: jika file scrape punya kolom Varian, setiap varian jadi baris sendiri (`nama ▸ varian`) dan dicocokkan sendiri. Gram/kapasitas/warna dari varian dipakai, mis. `ARCTIC MX-7 2G 4G 8G ▸ 4G` cocok ke SKU 4g (varian 2g/8g hanya 60%). Centang "Gabung varian" saat upload untuk cara lama (1 produk per URL). Catatan: kalau snapshot sebelumnya digabung, hapus dan upload ulang supaya perbandingannya konsisten.
 - **Dashboard**: SKU yang oke dijual (gabungan semua kompetitor) + harga min/median/maks + saran harga (+ margin bila katalog punya kolom `hpp`).
 
 ## Cara pakai

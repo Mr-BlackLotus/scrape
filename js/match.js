@@ -51,6 +51,8 @@
       return n + u;
     });
     s = s.replace(/(\d+)\s*(?:watt|w)\b/g, '$1w');
+    s = s.replace(/(\d+(?:[.,]\d+)?)\s*(?:gram|gr|g)\b/g, (_, n) => num1(n) + 'g'); // 4 gram / 4gr / 4G → 4g
+    s = s.replace(/(\d+(?:[.,]\d+)?)\s*(?:ml|mL)\b/g, (_, n) => num1(n) + 'ml');
     s = s.replace(/(\d+(?:[.,]\d+)?)\s*(?:inch|inci|in\b|"|''|″)/g, (_, n) => num1(n) + 'inch');
     s = s.replace(/\bddr\s*([2-5])\b/g, 'ddr$1');
     return s;
@@ -68,7 +70,7 @@
     return Array.from(new Set(tokenList(normText(name))));
   }
 
-  const SPEC_TOKEN = /^(\d+(?:\.\d+)?)(mm|gb|tb|mb|mhz|ghz|w|inch)$|^ddr\d$|^usb\d?$|^sata\d?$|^pcie\d?$|^\d+$|^\d+x\d+$/;
+  const SPEC_TOKEN = /^(\d+(?:\.\d+)?)(mm|gb|tb|mb|mhz|ghz|w|inch|g|ml)$|^ddr\d$|^usb\d?$|^sata\d?$|^pcie\d?$|^\d+$|^\d+x\d+$/;
   const isSpecTok = (t) => SPEC_TOKEN.test(t);
   const isModel = (t) => t.length >= 3 && /\d/.test(t) && /[a-z]/.test(t) && !isSpecTok(t);
   const SPEC_KINDS = [
@@ -78,10 +80,12 @@
     ['ddr', /\bddr([2-5])\b/g, 'Tipe RAM', (v) => 'DDR' + v],
     ['w', /\b(\d{2,4})w\b/g, 'Daya', (v) => v + 'W'],
     ['inch', /\b(\d{1,2}(?:\.\d)?)inch\b/g, 'Layar', (v) => v + '"'],
+    ['g', /\b(\d+(?:\.\d+)?)g\b/g, 'Berat', (v) => v + 'g'],
+    ['ml', /\b(\d+(?:\.\d+)?)ml\b/g, 'Volume', (v) => v + 'ml'],
   ];
 
   /** baca atribut sebuah nama produk. brands = Set merek yang dikenal */
-  function analyze(name, brands) {
+  function analyzeRaw(name, brands) {
     const s = normText(name);
     const list = tokenList(s);
     const toks = Array.from(new Set(list));
@@ -107,6 +111,34 @@
     const type = [];
     for (const t of list) if (t !== brand && !colorToks.has(t) && !isSpecTok(t) && (!GENERIC.has(t) || TECH.has(t)) && !type.includes(t)) type.push(t);
     return { brand, colors, specs, toks, core, models: core.filter(isModel), type };
+  }
+
+  const VSEP = ' ▸ ';
+  /** nama item scrape bisa berbentuk "nama produk ▸ varian": spesifikasi & warna dari varian menggantikan yang ada di nama
+   *  (mis. "MX-7 2G 4G 8G ▸ 4G" → berat 4g saja) */
+  function analyze(name, brands) {
+    name = String(name);
+    const i = name.indexOf(VSEP);
+    if (i < 0) return analyzeRaw(name, brands);
+    const a = analyzeRaw(name.slice(0, i), brands);
+    const v = analyzeRaw(name.slice(i + VSEP.length), brands);
+    for (const [k, , , fmt] of SPEC_KINDS) {
+      if (!v.specs[k]) continue;
+      const tk = (x) => (k === 'cap' ? x : fmt(x).toLowerCase());
+      const stale = new RegExp('^' + (SPEC_KINDS.find((z) => z[0] === k)[1].source.replace(/\\b/g, '')) + '$');
+      const drop = (t) => stale.test(t);
+      a.core = a.core.filter((t) => !drop(t));
+      a.toks = a.toks.filter((t) => !drop(t));
+      a.type = a.type.filter((t) => !drop(t));
+      for (const x of v.specs[k]) {
+        const t = tk(x);
+        if (!a.toks.includes(t)) a.toks.push(t);
+        if (!a.core.includes(t)) a.core.push(t);
+      }
+      a.specs[k] = v.specs[k];
+    }
+    if (v.colors.length) a.colors = v.colors;
+    return a;
   }
 
   /** bangun index untuk sumber katalog: rows = [[id,name,cost,price],...] */
