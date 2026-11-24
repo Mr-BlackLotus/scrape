@@ -162,6 +162,18 @@
     return `<span class="chip ${m.cls}">${m.label}</span>`;
   };
   const tierChip = (t) => `<span class="chip tier">${esc(t)}</span>`;
+  /** chip penjelasan kenapa kandidat cocok / tidak (merek, tipe, warna, ukuran…) */
+  const whyChips = (why) => (why && why.length ? `<span class="why">${why.map((x) => `<span class="w ${x.s}">${esc(x.l)}${x.s === 'ok' ? ' ✓' : x.s === 'bad' ? ' ✗' : ''} ${esc(x.t)}</span>`).join('')}</span>` : '');
+  /** atribut yang terbaca dari nama produk kompetitor */
+  const attrLine = (name) => {
+    const a = KS.parseProduct(name, S.indexes);
+    const parts = [];
+    if (a.brand) parts.push(`Merek <b>${esc(a.brand)}</b>`);
+    if (a.type) parts.push(`Tipe <b>${esc(a.type)}</b>`);
+    if (a.colors.length) parts.push(`Warna <b>${esc(a.colors.join('/'))}</b>`);
+    a.specs.forEach((x) => parts.push(`${esc(x.l)} <b>${esc(x.v)}</b>`));
+    return parts.length ? `<div class="attrs">${parts.map((x) => `<span>${x}</span>`).join('')}</div>` : '';
+  };
   const catChip = (c) => (c ? `<span class="chip cat">${esc(c)}</span>` : '');
   const allCats = () => [...new Set([...S.cats, ...S.comps.map((c) => c.cat).filter(Boolean)])];
   const catOpts = (sel, extra = '') => `<option value="">(tanpa kategori)</option>${allCats().map((t) => `<option ${sel === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}${extra}`;
@@ -609,7 +621,7 @@
   function viewMatcher() {
     const main = $('#main');
     const u = S.ui.m;
-    main.innerHTML = `<h1>SKU Matcher</h1><p class="sub">Cocokkan nama produk kompetitor ke katalog kita. Boleh punya beberapa sumber katalog (mis. Drive/Sheet yang berbeda) — pencocokan memakai semuanya.</p>
+    main.innerHTML = `<h1>SKU Matcher</h1><p class="sub">Cocokkan nama produk kompetitor ke katalog kita. Nama dibaca per bagian (merek, tipe, warna, ukuran/kapasitas) dan satuan disamakan, misalnya 120mm = 12CM. Warna atau ukuran yang berbeda tidak akan disetujui otomatis. Boleh punya beberapa sumber katalog (mis. Drive/Sheet yang berbeda) — pencocokan memakai semuanya.</p>
       <div class="card"><h2>Sumber katalog</h2><div id="cats"></div>
         <div class="bar" style="margin-top:12px"><input type="text" id="cname" placeholder="Nama sumber (mis. Katalog Gudang B)"><label class="btn">+ Tambah CSV<input type="file" id="cfile" accept=".csv,.tsv,text/csv" hidden></label><span class="help">CSV dengan kolom <code>id</code>, <code>name</code>; opsional <code>hpp</code>/<code>modal</code> untuk hitung margin.</span></div></div>
       <div id="mprog"></div>
@@ -694,9 +706,9 @@
             } else if (r.e && r.e.none) mid = '<span class="muted">Ditandai: bukan produk kita</span>';
             else
               mid = `<div class="sugg">${r.sg
-                .map((s, j) => `<button data-act="pick" data-i="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : s.score >= 0.5 ? 'md' : 'lo'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)}${S.indexes.length > 1 ? ' · ' + esc(s.srcName) : ''}</span></button>`)
+                .map((s, j) => `<button data-act="pick" data-i="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : s.score >= 0.5 ? 'md' : 'lo'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)}${S.indexes.length > 1 ? ' · ' + esc(s.srcName) : ''}</span>${whyChips(s.why)}</button>`)
                 .join('') || '<span class="muted small">Tidak ada kandidat</span>'}</div>`;
-            return `<tr><td>${esc(r.comp.name)}</td><td><div class="nm">${esc(r.it.name)}</div><div class="sm2">${rp(r.it.price)} · ${esc(r.it.k)}</div></td><td>${mid}</td><td style="white-space:nowrap"><button class="btn sm" data-act="msearch" data-i="${gi}">Cari…</button> ${r.e ? `<button class="btn sm" data-act="unmatch" data-i="${gi}">Lepas</button>` : `<button class="btn sm" data-act="mnone" data-i="${gi}">Bukan produk kita</button>`}</td></tr>`;
+            return `<tr><td>${esc(r.comp.name)}</td><td><div class="nm">${esc(r.it.name)}</div><div class="sm2">${rp(r.it.price)} · ${esc(r.it.k)}</div>${attrLine(r.it.name)}</td><td>${mid}</td><td style="white-space:nowrap"><button class="btn sm" data-act="msearch" data-i="${gi}">Cari…</button> ${r.e ? `<button class="btn sm" data-act="unmatch" data-i="${gi}">Lepas</button>` : `<button class="btn sm" data-act="mnone" data-i="${gi}">Bukan produk kita</button>`}</td></tr>`;
           })
           .join('')}</tbody></table></div>${pager(list.length, u.page, 'mpage')}`
       : empty(S.indexes.length ? 'Tidak ada item di kategori ini.' : 'Tambahkan / aktifkan katalog dulu.');
@@ -704,10 +716,10 @@
 
   function searchModal(gi) {
     const r = S.mView[gi];
-    modal(`<h2>Cari di katalog</h2><p class="sub">${esc(r.it.name)}</p><input type="search" id="sq" style="width:100%" value="${esc(r.it.name)}" autofocus><div id="sres" style="margin-top:12px"></div><div class="bar" style="margin-top:14px"><span class="grow"></span><button class="btn" data-act="close">Tutup</button></div>`);
+    modal(`<h2>Cari di katalog</h2><p class="sub" style="margin-bottom:6px">${esc(r.it.name)}</p>${attrLine(r.it.name)}<div style="height:12px"></div><input type="search" id="sq" style="width:100%" value="${esc(r.it.name)}" autofocus><div id="sres" style="margin-top:12px"></div><div class="bar" style="margin-top:14px"><span class="grow"></span><button class="btn" data-act="close">Tutup</button></div>`);
     const go = () => {
       const c = KS.matchAll(S.indexes, $('#sq').value, 8);
-      $('#sres').innerHTML = `<div class="sugg">${c.map((s, j) => `<button data-act="pick-search" data-gi="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : 'md'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)} · ${esc(s.srcName)}</span></button>`).join('') || '<span class="muted">Tidak ada hasil</span>'}</div>`;
+      $('#sres').innerHTML = `<div class="sugg">${c.map((s, j) => `<button data-act="pick-search" data-gi="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : 'md'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)} · ${esc(s.srcName)}</span>${whyChips(s.why)}</button>`).join('') || '<span class="muted">Tidak ada hasil</span>'}</div>`;
       S._sres = c;
     };
     $('#sq').oninput = go;

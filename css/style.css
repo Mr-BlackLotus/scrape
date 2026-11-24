@@ -149,6 +149,14 @@ td input[type=text],td select{width:100%;min-width:120px;padding:6px 9px}
 .sugg button{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:var(--rs);padding:7px 10px;cursor:pointer;font-size:.84rem;line-height:1.4}
 .sugg button:hover{border-color:var(--accent);background:var(--accent-soft)}
 
+/* ---------- penjelasan pencocokan ---------- */
+.attrs{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:.76rem;color:var(--muted)}
+.attrs b{color:var(--ink2);font-weight:600}
+.why{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.w{display:inline-block;font-size:.72rem;font-weight:550;padding:1px 8px;border-radius:99px;background:var(--flat-bg);color:var(--flat)}
+.w.ok{background:var(--up-bg);color:var(--up)} .w.bad{background:var(--down-bg);color:var(--down)} .w.part{background:var(--warn-bg);color:var(--warn)}
+.sugg button .score{vertical-align:top}
+
 /* ---------- modal & toast ---------- */
 .modal{position:fixed;inset:0;background:rgba(8,14,19,.55);backdrop-filter:blur(2px);display:flex;align-items:flex-start;justify-content:center;padding:64px 16px;z-index:50;overflow:auto}
 .modal[hidden]{display:none}

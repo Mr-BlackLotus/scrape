@@ -9,6 +9,11 @@ Web statis (tanpa build) untuk memantau scrape toko kompetitor: upload JSON → 
 - **Perbandingan tiap upload**: SKU baru, penjualan naik / turun / laku / stagnan, SKU hilang, harga naik/turun (nominal & %).
 - **Halaman Kompetitor**: buka satu toko atau semua sekaligus, filter status, cari, sort, export CSV.
 - **SKU Matcher**: cocokkan nama produk kompetitor ke katalog (`data/katalog.csv`, 54.592 SKU). Bisa banyak sumber katalog (Drive/Sheet berbeda), review saran, cari manual, setujui massal.
+  - Nama produk dibaca per bagian: **merek**, **tipe/model**, **warna** (Inggris & Indonesia: white = putih), dan **spesifikasi** (ukuran, kapasitas, kecepatan, daya, layar). Satuan disamakan: `120mm` = `12CM`, `1000GB` = `1TB`, `16 GB` = `16gb`.
+  - Contoh: `OCYPUS Gamma F12 ARGB | 120mm PWM - White` cocok dengan `Ocypus Gamma F12 ARGB White 12CM PWM Fan` (97%), bukan dengan versi Black atau F14.
+  - Merek berbeda, warna berbeda, ukuran/kapasitas berbeda, atau kode model yang tidak ada di katalog membatasi skor di bawah ambang auto-match, jadi masuk antrean *Perlu review*. Tiap saran menampilkan chip penjelasan (Merek ✓, Tipe ✓, Warna ✗ pink ≠ putih, Ukuran ✓ 120mm).
+  - Daftar merek diambil dari katalog (kata pertama nama yang sering muncul) ditambah daftar merek bawaan di `js/match.js`. Merek baru yang belum dikenal tetap dicocokkan lewat tipe, tapi tanpa pemeriksaan merek.
+  - Setelah update, klik **Hitung ulang otomatis** di SKU Matcher supaya match lama dihitung dengan aturan baru (match manual tidak berubah).
 - **Dashboard**: SKU yang oke dijual (gabungan semua kompetitor) + harga min/median/maks + saran harga (+ margin bila katalog punya kolom `hpp`).
 
 ## Cara pakai
