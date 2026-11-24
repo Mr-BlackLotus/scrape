@@ -15,6 +15,7 @@ Web statis (tanpa build) untuk memantau scrape toko kompetitor: upload JSON → 
   - Daftar merek diambil dari katalog (kata pertama nama yang sering muncul) ditambah daftar merek bawaan di `js/match.js`. Merek baru yang belum dikenal tetap dicocokkan lewat tipe, tapi tanpa pemeriksaan merek.
   - Skor dihitung multiplikatif (kemiripan tipe × merek × warna), jadi produk yang tidak ada di katalog mendapat skor rendah (±5–20%) dan tidak lolos auto. Kode model yang hampir sama (mis. E1404TA vs E1404FA) diturunkan, dan kata pemasaran (resmi, garansi, print, scan) berbobot ringan.
   - Setelah update, klik **Hitung ulang otomatis** di SKU Matcher supaya match lama dihitung dengan aturan baru (match manual tidak berubah).
+  - Tombol di SKU Matcher: **Hitung ulang otomatis** (match manual tetap), **Match ulang semua** (termasuk manual), **Hapus semua match** (snapshot tidak terhapus).
 - **Dashboard**: SKU yang oke dijual (gabungan semua kompetitor) + harga min/median/maks + saran harga (+ margin bila katalog punya kolom `hpp`).
 
 ## Cara pakai

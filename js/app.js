@@ -625,7 +625,7 @@
       <div class="card"><h2>Sumber katalog</h2><div id="cats"></div>
         <div class="bar" style="margin-top:12px"><input type="text" id="cname" placeholder="Nama sumber (mis. Katalog Gudang B)"><label class="btn">+ Tambah CSV<input type="file" id="cfile" accept=".csv,.tsv,text/csv" hidden></label><span class="help">CSV dengan kolom <code>id</code>, <code>name</code>; opsional <code>hpp</code>/<code>modal</code> untuk hitung margin.</span></div></div>
       <div id="mprog"></div>
-      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><button class="btn" data-act="rematch">Hitung ulang otomatis</button><button class="btn pri" data-act="bulk-ok">Setujui semua saran ≥ <span id="bulkpct">60</span>%</button></div>
+      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><button class="btn" data-act="rematch" title="Hitung ulang match otomatis; match manual tetap">Hitung ulang otomatis</button><button class="btn" data-act="rematch-all" title="Hitung ulang SEMUA, termasuk match manual">Match ulang semua</button><button class="btn danger" data-act="clear-matches" title="Hapus semua data match">Hapus semua match</button><button class="btn pri" data-act="bulk-ok">Setujui semua saran ≥ <span id="bulkpct">60</span>%</button></div>
         <div class="tabs" id="mtabs"></div>
         <div class="bar"><input type="search" id="mq" class="grow" placeholder="Cari nama produk kompetitor…" value="${esc(u.q)}"><select id="mcomp"><option value="all">Semua kompetitor</option>${S.comps.map((c) => `<option value="${c.id}" ${u.comp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><input type="number" id="bulkin" min="40" max="100" value="60" style="width:70px" title="Ambang persetujuan massal (%)"></div>
         <div id="mtbl"></div></div>`;
@@ -953,6 +953,19 @@
         S.sugg = {};
         dirty();
         return runSuggUI(true);
+      case 'rematch-all':
+        if (!confirm('Match ulang SEMUA SKU (termasuk match manual dan tanda "tidak ada di katalog")? Pilihan manual akan diganti hasil otomatis.')) return;
+        S.matches = {};
+        S.sugg = {};
+        dirty();
+        return runSuggUI(true);
+      case 'clear-matches':
+        if (!confirm('Hapus SEMUA data match (otomatis, manual, dan "tidak ada")? Riwayat snapshot tidak ikut terhapus.')) return;
+        S.matches = {};
+        S.sugg = {};
+        dirty();
+        toast('Semua match dihapus');
+        return fillMatcher();
       case 'cat-del':
         if (!confirm('Hapus sumber katalog ini?')) return;
         S.catalogs = S.catalogs.filter((c) => c.id !== d.id);
