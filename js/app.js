@@ -7,6 +7,7 @@
     settings: { apiUrl: '', token: '', strategy: 'median', round: 100, upRatio: 1.25, downRatio: 0.75, autoSync: true, matchAuto: 0.75 },
     comps: [],
     tiers: ['Agresif', 'Expert', 'Reguler'],
+    cats: [], // kategori buatan sendiri (mis. Komputer, Laptop, Aksesoris); comp.cat menunjuk salah satunya
     snaps: {}, // compId -> [snapshot] urut tanggal
     catalogs: [], // {id,name,rows,enabled}
     indexes: [],
@@ -16,7 +17,7 @@
     view: 'dashboard',
     dirty: true,
     D: null,
-    ui: { dash: { mov: 'baru', tier: 'all', q: '', minSell: 1, onlyMatched: false, page: 0 }, k: { comp: 'all', status: 'all', q: '', sort: 'name', dir: 1, page: 0, snap: null }, m: { filter: 'review', q: '', page: 0, comp: 'all' } },
+    ui: { dash: { mov: 'baru', tier: 'all', cat: 'all', q: '', minSell: 1, onlyMatched: false, page: 0 }, k: { comp: 'all', group: null, status: 'all', q: '', sort: 'name', dir: 1, page: 0, snap: null }, m: { filter: 'review', q: '', page: 0, comp: 'all' } },
     pending: [],
     lastResult: null,
   });
@@ -57,14 +58,14 @@
   let persistT;
   function persist() {
     clearTimeout(persistT);
-    persistT = setTimeout(() => KS.db.kvSet('state', { settings: S.settings, comps: S.comps, tiers: S.tiers, matches: S.matches }), 250);
+    persistT = setTimeout(() => KS.db.kvSet('state', { settings: S.settings, comps: S.comps, tiers: S.tiers, cats: S.cats, matches: S.matches }), 250);
   }
   const dirty = () => ((S.dirty = true), persist());
 
   // ---------- load ----------
   async function load() {
     const st = await KS.db.kvGet('state', null);
-    if (st) Object.assign(S, { comps: st.comps || [], tiers: st.tiers || S.tiers, matches: st.matches || {} }), Object.assign(S.settings, st.settings || {});
+    if (st) Object.assign(S, { comps: st.comps || [], tiers: st.tiers || S.tiers, cats: st.cats || [], matches: st.matches || {} }), Object.assign(S.settings, st.settings || {});
     const snaps = await KS.db.snapAll();
     snaps.sort((a, b) => a.date.localeCompare(b.date));
     for (const s of snaps) (S.snaps[s.compId] = S.snaps[s.compId] || []).push(s);
@@ -161,6 +162,19 @@
     return `<span class="chip ${m.cls}">${m.label}</span>`;
   };
   const tierChip = (t) => `<span class="chip tier">${esc(t)}</span>`;
+  const catChip = (c) => (c ? `<span class="chip cat">${esc(c)}</span>` : '');
+  const allCats = () => [...new Set([...S.cats, ...S.comps.map((c) => c.cat).filter(Boolean)])];
+  const catOpts = (sel, extra = '') => `<option value="">(tanpa kategori)</option>${allCats().map((t) => `<option ${sel === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}${extra}`;
+  /** tanya nama kategori baru; kembalikan nama (sudah didaftarkan) atau null */
+  function askNewCat() {
+    const n = (prompt('Nama kategori baru (mis. Komputer, Laptop, Aksesoris):') || '').trim();
+    if (!n) return null;
+    const ex = allCats().find((c) => c.toLowerCase() === n.toLowerCase());
+    if (ex) return ex;
+    S.cats.push(n);
+    persist();
+    return n;
+  }
   function pcell(r) {
     if (r.priceDelta == null) return '<span class="muted">–</span>';
     const up = r.priceDelta > 0;
@@ -206,6 +220,7 @@
         <div class="bar">
           <input type="search" id="rq" class="grow" placeholder="Cari produk…" value="${esc(u.q)}">
           <select id="rtier"><option value="all">Semua tier</option>${S.tiers.map((t) => `<option ${u.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
+          ${allCats().length ? `<select id="rcat"><option value="all">Semua kategori</option>${allCats().map((t) => `<option ${u.cat === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}
           <select id="rmin">${[1, 2, 3].map((n) => `<option value="${n}" ${u.minSell == n ? 'selected' : ''}>≥ ${n} kompetitor menjual</option>`).join('')}</select>
           <label class="small"><input type="checkbox" id="rmatch" ${u.onlyMatched ? 'checked' : ''}> hanya yang ada di katalog</label>
           <button class="btn" data-act="export-reco">Export CSV</button>
@@ -217,6 +232,7 @@
     fillReco();
     $('#rq').oninput = (e) => ((u.q = e.target.value), (u.page = 0), fillReco());
     $('#rtier').onchange = (e) => ((u.tier = e.target.value), (u.page = 0), fillReco());
+    if ($('#rcat')) $('#rcat').onchange = (e) => ((u.cat = e.target.value), (u.page = 0), fillReco());
     $('#rmin').onchange = (e) => ((u.minSell = +e.target.value), (u.page = 0), fillReco());
     $('#rmatch').onchange = (e) => ((u.onlyMatched = e.target.checked), (u.page = 0), fillReco());
   }
@@ -253,7 +269,7 @@
         ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk</th><th class="n">Harga</th><th class="n">Δ Harga</th><th class="n">Terjual</th><th>Status</th></tr></thead><tbody>${rows
             .slice(0, 15)
             .map(
-              (r) => `<tr><td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)}</td><td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div></td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${salesCell(r)}</td><td>${chip(r.status)}</td></tr>`
+              (r) => `<tr><td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}</td><td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div></td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${salesCell(r)}</td><td>${chip(r.status)}</td></tr>`
             )
             .join('')}</tbody></table></div>${rows.length > 15 ? `<p class="small muted">Menampilkan 15 teratas. <a href="#" data-act="goto-k" data-s="${u.mov}">Lihat semua di halaman Kompetitor</a></p>` : ''}`
         : empty('Tidak ada.'));
@@ -267,6 +283,7 @@
       if (g.nSellers < u.minSell && !(u.minSell === 1 && g.nSellers === 0)) return false;
       if (u.onlyMatched && !g.match) return false;
       if (u.tier !== 'all' && !g.offers.some((o) => o.comp.tier === u.tier)) return false;
+      if (u.cat !== 'all' && !g.offers.some((o) => o.comp.cat === u.cat)) return false;
       if (q && !(g.name.toLowerCase().includes(q) || (g.match && String(g.match.id).includes(q)))) return false;
       return true;
     });
@@ -297,7 +314,7 @@
       <div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Nama di toko</th><th class="n">Harga</th><th class="n">Stok</th><th class="n">Terjual</th><th>Status</th></tr></thead><tbody>${g.offers
         .slice()
         .sort((a, b) => (a.price ?? 1e15) - (b.price ?? 1e15))
-        .map((o) => `<tr><td>${esc(o.comp.name)}<br>${tierChip(o.comp.tier)}</td><td><div class="nm">${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.name)}</a>` : esc(o.name)}</div></td><td class="n">${rp(o.price)}<br>${pcell(o)}</td><td class="n">${num(o.stock)}</td><td class="n">${salesCell(o)}</td><td>${chip(o.status)}</td></tr>`)
+        .map((o) => `<tr><td>${esc(o.comp.name)}<br>${tierChip(o.comp.tier)} ${catChip(o.comp.cat)}</td><td><div class="nm">${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.name)}</a>` : esc(o.name)}</div></td><td class="n">${rp(o.price)}<br>${pcell(o)}</td><td class="n">${num(o.stock)}</td><td class="n">${salesCell(o)}</td><td>${chip(o.status)}</td></tr>`)
         .join('')}</tbody></table></div><div class="bar" style="margin-top:14px"><span class="grow"></span><button class="btn" data-act="close">Tutup</button></div>`);
   }
 
@@ -311,16 +328,19 @@
     const u = S.ui.k;
     if (!S.comps.length) return (main.innerHTML = `<h1>Kompetitor</h1>${empty('Belum ada kompetitor. <br><br><button class="btn pri" data-view="upload">Upload scrape</button>')}`);
     if (u.comp !== 'all' && !compById(u.comp)) u.comp = 'all';
-    const side = S.tiers
-      .concat(S.comps.map((c) => c.tier).filter((t) => !S.tiers.includes(t)))
+    const grp = u.group || (S.comps.some((c) => c.cat) ? 'cat' : 'tier');
+    const keyOf = grp === 'cat' ? (c) => c.cat || '' : (c) => c.tier;
+    const order = grp === 'cat' ? [...allCats(), ''] : S.tiers.concat(S.comps.map((c) => c.tier).filter((t) => !S.tiers.includes(t)));
+    const side = order
       .map((t) => {
-        const cs = S.comps.filter((c) => c.tier === t);
+        const cs = S.comps.filter((c) => keyOf(c) === t);
         if (!cs.length) return '';
-        return `<h4>${esc(t)}</h4>` + cs.map((c) => `<button class="${u.comp === c.id ? 'on' : ''}" data-act="pick-comp" data-id="${c.id}"><span>${esc(c.name)}</span><span class="muted small">${lastSnap(c.id) ? num(lastSnap(c.id).items.length) : 0}</span></button>`).join('');
+        return `<h4>${esc(t || 'Tanpa kategori')}</h4>` + cs.map((c) => `<button class="${u.comp === c.id ? 'on' : ''}" data-act="pick-comp" data-id="${c.id}"><span>${esc(c.name)}</span><span class="muted small">${lastSnap(c.id) ? num(lastSnap(c.id).items.length) : 0}</span></button>`).join('');
       })
       .join('');
+    const seg = `<div class="seg" role="group" aria-label="Kelompokkan menurut">${[['cat', 'Kategori'], ['tier', 'Tier']].map(([g, l]) => `<button class="${grp === g ? 'on' : ''}" data-act="kgroup" data-g="${g}">${l}</button>`).join('')}</div>`;
     main.innerHTML = `<h1>Kompetitor</h1><p class="sub">Buka satu kompetitor atau lihat semuanya sekaligus.</p>
-      <div class="split"><aside class="side"><button class="${u.comp === 'all' ? 'on' : ''}" data-act="pick-comp" data-id="all"><span><b>Semua kompetitor</b></span><span class="muted small">${S.comps.length}</span></button>${side}</aside><section id="kmain"></section></div>`;
+      <div class="split"><aside class="side">${seg}<button class="${u.comp === 'all' ? 'on' : ''}" data-act="pick-comp" data-id="all"><span><b>Semua kompetitor</b></span><span class="muted small">${S.comps.length}</span></button>${side}</aside><section id="kmain"></section></div>`;
     fillKomp();
   }
 
@@ -354,7 +374,8 @@
     const { rows, gone, meta } = kompData();
     const cnt = (f) => (f === 'all' ? rows.length : f === 'hilang' ? gone.length : f === 'hargaNaik' ? rows.filter((r) => r.priceDelta > 0).length : f === 'hargaTurun' ? rows.filter((r) => r.priceDelta < 0).length : rows.filter((r) => r.status === f).length);
     const head = meta
-      ? `<div class="bar"><h2 style="margin:0">${esc(meta.c.name)}</h2>${tierChip(meta.c.tier)}<span class="grow"></span>
+      ? `<div class="bar"><h2 style="margin:0">${esc(meta.c.name)}</h2>${tierChip(meta.c.tier)} ${catChip(meta.c.cat)}<span class="grow"></span>
+          <label class="small muted">Kategori <select id="kcat">${catOpts(meta.c.cat, '<option value="__new">+ Kategori baru…</option>')}</select></label>
           <label class="small muted">Snapshot <select id="ksnap">${meta.sn.map((s, i) => `<option value="${i}" ${i === meta.idx ? 'selected' : ''}>${fmtDate(s.date)} · ${num(s.items.length)} SKU</option>`).join('')}</select></label>
           <button class="btn sm" data-act="backup-comp" data-id="${meta.c.id}" title="Simpan seluruh riwayat toko ini ke file JSON">Backup toko ini</button>
           <label class="btn sm" title="Pulihkan dari file backup JSON (digabung, tidak menimpa)">Restore<input type="file" id="rfile2" accept=".json" hidden></label>
@@ -366,6 +387,15 @@
       <div id="ktbl"></div>`;
     $('#kq').oninput = (e) => ((u.q = e.target.value), (u.page = 0), fillKTable());
     const sel = $('#ksnap');
+    const kc = $('#kcat');
+    if (kc)
+      kc.onchange = (e) => {
+        let v = e.target.value;
+        if (v === '__new') v = askNewCat() ?? meta.c.cat ?? '';
+        compById(meta.c.id).cat = v;
+        dirty();
+        viewKomp();
+      };
     if (sel) sel.onchange = (e) => ((u.snap = +e.target.value), (u.snapComp = meta.c.id), (u.page = 0), fillKomp());
     const rf2 = $('#rfile2');
     if (rf2) rf2.onchange = restoreBackup;
@@ -396,7 +426,7 @@
       ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual (kolom scrape)', 'n')}${th('rate', 'Penjualan / tren', 'n')}<th class="nosort">Match katalog</th></tr></thead><tbody>${slice
           .map((r) => {
             const m = S.matchOf(r.comp.id, r.k, r.name);
-            return `<tr>${all ? `<td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)}</td>` : ''}<td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div><div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div></td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
+            return `<tr>${all ? `<td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}</td>` : ''}<td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div><div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div></td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
           })
           .join('')}</tbody></table></div>${pager(list.length, u.page, 'kpage')}`
       : empty('Tidak ada data untuk filter ini.');
@@ -460,7 +490,7 @@
           ).join('');
           return `<div class="file" data-pid="${p.id}"><div class="bar"><b>${esc(p.info.fileName)}</b><span class="muted small" data-cnt>${num(n)} produk terbaca dari ${num(p.info.raw.length)} baris</span><span class="grow"></span><button class="btn sm" data-act="pend-del" data-id="${p.id}">Buang</button></div>
             <div class="row"><label class="fld">Kompetitor<select data-pcomp="${p.id}">${opts}<option value="__new" ${p.compId === '__new' ? 'selected' : ''}>+ Kompetitor baru…</option></select></label>
-            ${p.compId === '__new' ? `<label class="fld">Nama baru<input type="text" data-pname="${p.id}" value="${esc(p.newName)}"></label><label class="fld">Tier<select data-ptier="${p.id}">${S.tiers.map((t) => `<option ${p.newTier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>` : ''}
+            ${p.compId === '__new' ? `<label class="fld">Nama baru<input type="text" data-pname="${p.id}" value="${esc(p.newName)}"></label><label class="fld">Kategori<select data-pcat="${p.id}">${catOpts(p.newCat, '<option value="__new">+ Kategori baru…</option>')}</select></label><label class="fld">Tier<select data-ptier="${p.id}">${S.tiers.map((t) => `<option ${p.newTier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>` : ''}
             <label class="fld">Tanggal scrape<input type="datetime-local" data-pdate="${p.id}" value="${toLocalInput(p.date)}"></label></div>
             <div class="row"><label class="fld">Kolom terjual berarti<select data-psold="${p.id}"><option value="monthly" ${p.soldMode === 'monthly' ? 'selected' : ''}>Penjualan per bulan (30 hari terakhir)</option><option value="cumulative" ${p.soldMode === 'cumulative' ? 'selected' : ''}>Total kumulatif sejak awal</option></select></label>
             ${p.info.mapping.variant ? `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-pmerge="${p.id}" ${p.merge ? 'checked' : ''}> Gabung varian jadi 1 produk (harga = varian tersedia termurah)</label>` : ''}</div>
@@ -483,7 +513,7 @@
           if (!name) throw new Error('Nama kompetitor baru belum diisi.');
           comp = S.comps.find((c) => c.name.toLowerCase() === name.toLowerCase());
           if (!comp) {
-            comp = { id: KS.slug(name) + '-' + KS.uid().slice(0, 3), name, tier: p.newTier };
+            comp = { id: KS.slug(name) + '-' + KS.uid().slice(0, 3), name, tier: p.newTier, cat: p.newCat || '' };
             S.comps.push(comp);
           }
         }
@@ -542,7 +572,7 @@
       const top = (st, n = 5) => a.rows.filter((r) => r.status === st).sort((x, y) => (y.rate || 0) - (x.rate || 0)).slice(0, n);
       const pr = a.rows.filter((r) => r.priceDelta != null).sort((x, y) => Math.abs(y.pricePct || 0) - Math.abs(x.pricePct || 0)).slice(0, 5);
       const list = (rows, f) => (rows.length ? `<ul class="small" style="margin:6px 0 0;padding-left:18px">${rows.map((r) => `<li>${esc(r.name.slice(0, 70))} — ${f(r)}</li>`).join('')}</ul>` : '');
-      return `<div class="card"><div class="bar"><h2 style="margin:0">${esc(o.comp.name)}</h2>${tierChip(o.comp.tier)}<span class="muted small">${fmtDate(a.date)}${a.hasPrev ? ' vs ' + fmtDate(a.prevDate) : ''}</span><span class="grow"></span>${o.sync === 'ok' ? '<span class="chip up">Tersimpan di Google Sheets</span>' : o.sync ? `<span class="chip down" title="${esc(o.sync)}">Gagal kirim ke Sheets</span> <button class="btn sm" data-act="retry-sync" data-id="${o.comp.id}">Coba lagi</button>` : `<span class="chip">Hanya lokal</span>`}</div>
+      return `<div class="card"><div class="bar"><h2 style="margin:0">${esc(o.comp.name)}</h2>${tierChip(o.comp.tier)} ${catChip(o.comp.cat)}<span class="muted small">${fmtDate(a.date)}${a.hasPrev ? ' vs ' + fmtDate(a.prevDate) : ''}</span><span class="grow"></span>${o.sync === 'ok' ? '<span class="chip up">Tersimpan di Google Sheets</span>' : o.sync ? `<span class="chip down" title="${esc(o.sync)}">Gagal kirim ke Sheets</span> <button class="btn sm" data-act="retry-sync" data-id="${o.comp.id}">Coba lagi</button>` : `<span class="chip">Hanya lokal</span>`}</div>
         ${a.hasPrev ? `<div class="kpis" style="margin:12px 0 4px"><div class="kpi new"><div class="v">${s.baru}</div><div class="l">SKU baru</div></div><div class="kpi up"><div class="v">${s.naik}</div><div class="l">Penjualan naik</div></div><div class="kpi down"><div class="v">${s.turun}</div><div class="l">Penjualan turun</div></div><div class="kpi"><div class="v">${s.hargaNaik}</div><div class="l">Harga naik</div></div><div class="kpi"><div class="v">${s.hargaTurun}</div><div class="l">Harga turun</div></div><div class="kpi"><div class="v">${s.hilang}</div><div class="l">Hilang</div></div></div>
         <div class="grid2"><div><h3>Penjualan naik teratas</h3>${list(top('naik'), (r) => `${num(r.sales)} terjual (${num(r.rate)}/hari)`) || '<span class="muted small">–</span>'}</div><div><h3>Perubahan harga terbesar</h3>${list(pr, (r) => `${rp(r.prevPrice)} → ${rp(r.price)} (${r.pricePct > 0 ? '+' : ''}${r.pricePct.toFixed(1)}%)`) || '<span class="muted small">–</span>'}</div></div>`
           : `<p class="muted" style="margin:10px 0 0">Ini scrape pertama untuk kompetitor ini (${num(s.total)} SKU) — dijadikan baseline. Upload scrape berikutnya untuk melihat perubahan.</p>`}
@@ -710,12 +740,30 @@
         <label class="fld">Auto-match jika skor ≥<input type="number" step="0.05" min="0.5" max="1" id="smatch" value="${st.matchAuto}"></label></div>
         <div class="bar" style="margin-top:12px"><button class="btn pri" data-act="save-rules">Simpan aturan</button></div>
         <p class="help">Penjualan dihitung dari selisih kolom <i>terjual</i> antar scrape; jika tidak ada, dari penurunan <i>stok</i> (restock tidak dihitung sebagai penjualan). Status naik/turun membandingkan laju per hari periode ini vs periode sebelumnya (butuh ≥3 scrape).</p></div></div>
-      <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td style="white-space:nowrap"><button class="btn sm" data-act="backup-comp" data-id="${c.id}">Backup</button> <button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
+      <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th>Kategori</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td><select data-ccat="${c.id}">${catOpts(c.cat)}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td style="white-space:nowrap"><button class="btn sm" data-act="backup-comp" data-id="${c.id}">Backup</button> <button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
         <div class="bar" style="margin-top:12px"><input type="text" id="ntier" placeholder="Tier baru (mis. Premium)"><button class="btn" data-act="add-tier">Tambah tier</button></div></div>
+      <div class="card"><h2>Kategori</h2>
+        <p class="help" style="margin-top:-6px;margin-bottom:12px">Label buatan sendiri untuk mengelompokkan toko, misalnya Komputer, Laptop, atau Aksesoris. Satu toko memakai satu kategori; atur di kolom Kategori pada tabel di atas, saat upload, atau di halaman Kompetitor.</p>
+        <div class="tbl"><table><thead><tr><th>Nama kategori</th><th class="n">Toko</th><th></th></tr></thead><tbody>${allCats().map((n) => `<tr><td><input type="text" data-catname="${esc(n)}" value="${esc(n)}"></td><td class="n">${S.comps.filter((c) => c.cat === n).length}</td><td class="n"><button class="btn sm danger" data-act="del-cat" data-name="${esc(n)}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">Belum ada kategori.</td></tr>'}</tbody></table></div>
+        <div class="bar" style="margin-top:12px"><input type="text" id="ncat" placeholder="Kategori baru (mis. Komputer)"><button class="btn" data-act="add-cat">Tambah kategori</button></div></div>
       <div class="card"><h2>Backup</h2><div class="bar"><button class="btn" data-act="backup">Download backup semua kompetitor (JSON)</button><label class="btn">Restore backup<input type="file" id="rfile" accept=".json" hidden></label><button class="btn danger" data-act="reset">Hapus semua data lokal</button></div>
         <p class="help">Backup satu toko tersedia di tabel Kompetitor di atas dan di halaman Kompetitor. Restore menggabungkan ke data yang ada: snapshot yang sudah ada dilewati, kompetitor yang belum ada dibuat otomatis, tidak ada data yang ditimpa.</p></div>`;
     $('#rfile').onchange = restoreBackup;
     $$('[data-cname]').forEach((i) => (i.onchange = () => ((compById(i.dataset.cname).name = i.value.trim() || compById(i.dataset.cname).name), dirty())));
+    $$('[data-ccat]').forEach((i) => (i.onchange = () => ((compById(i.dataset.ccat).cat = i.value), dirty())));
+    $$('[data-catname]').forEach(
+      (i) =>
+        (i.onchange = () => {
+          const old = i.dataset.catname,
+            nn = i.value.trim();
+          if (!nn || (nn.toLowerCase() !== old.toLowerCase() && allCats().some((c) => c.toLowerCase() === nn.toLowerCase()))) return viewSettings();
+          S.cats = S.cats.filter((c) => c !== old).concat(nn);
+          S.comps.forEach((c) => c.cat === old && (c.cat = nn));
+          dirty();
+          viewSettings();
+        })
+    );
+    $('#ncat').onkeydown = (e) => e.key === 'Enter' && $('[data-act=add-cat]').click();
     $$('[data-ctier]').forEach((i) => (i.onchange = () => ((compById(i.dataset.ctier).tier = i.value), dirty())));
   }
 
@@ -727,6 +775,7 @@
       const r = await mergeData(j.comps, j.snaps);
       if (j.matches) for (const [k, v] of Object.entries(j.matches)) if (!(k in S.matches)) S.matches[k] = v;
       if (j.tiers) S.tiers = [...new Set([...S.tiers, ...j.tiers])];
+      if (j.cats) S.cats = [...new Set([...S.cats, ...j.cats])];
       dirty();
       const names = j.comps.map((c) => c.name).slice(0, 3).join(', ') + (j.comps.length > 3 ? ', …' : '');
       toast(`Restore ${names}: ${r.added} snapshot ditambahkan, ${r.skipped} sudah ada${r.newComps ? `, ${r.newComps} kompetitor baru` : ''}`);
@@ -750,6 +799,7 @@
       exportedAt: new Date().toISOString(),
       comps,
       tiers: compId ? [...new Set(comps.map((c) => c.tier))] : S.tiers,
+      cats: compId ? [...new Set(comps.map((c) => c.cat).filter(Boolean))] : allCats(),
       matches,
       snaps: comps.flatMap((c) => S.snaps[c.id] || []),
     };
@@ -760,7 +810,7 @@
       newComps = 0;
     for (const c of comps)
       if (!compById(c.id)) {
-        S.comps.push({ id: c.id, name: c.name, tier: c.tier });
+        S.comps.push({ id: c.id, name: c.name, tier: c.tier, cat: c.cat || '' });
         newComps++;
       }
     for (const s of snaps) {
@@ -800,6 +850,7 @@
     if (t.dataset.pcomp) (p(t.dataset.pcomp).compId = t.value), fillPending();
     else if (t.dataset.pname) p(t.dataset.pname).newName = t.value;
     else if (t.dataset.ptier) p(t.dataset.ptier).newTier = t.value;
+    else if (t.dataset.pcat) { const pp = p(t.dataset.pcat); pp.newCat = t.value === '__new' ? askNewCat() || '' : t.value; fillPending(); }
     else if (t.dataset.pdate) p(t.dataset.pdate).date = t.value ? new Date(t.value).toISOString() : p(t.dataset.pdate).date;
     else if (t.dataset.pmerge) { p(t.dataset.pmerge).merge = t.checked; fillPending(); }
     else if (t.dataset.psold) p(t.dataset.psold).soldMode = t.value;
@@ -830,6 +881,7 @@
       case 'grp': return groupModal(S.recoView[+d.i]);
       case 'goto-k': e.preventDefault(); u.k = { ...u.k, comp: 'all', status: d.s, page: 0, q: '' }; return go('kompetitor');
       case 'goto-comp': u.k = { ...u.k, comp: d.id, status: 'all', page: 0, q: '', snap: null }; return go('kompetitor');
+      case 'kgroup': u.k.group = d.g; return viewKomp();
       case 'pick-comp': u.k.comp = d.id; u.k.page = 0; u.k.snap = null; return viewKomp();
       case 'kfilter': u.k.status = d.f; u.k.page = 0; return fillKomp();
       case 'ksort': u.k.dir = u.k.sort === d.k ? -u.k.dir : 1; u.k.sort = d.k; return fillKTable();
@@ -845,8 +897,8 @@
         return viewKomp();
       }
       case 'export-k': {
-        const rows = [['Kompetitor', 'Tier', 'SKU', 'Nama', 'Status', 'Harga', 'Harga sebelumnya', 'Δ Harga', 'Δ %', 'Stok', 'Terjual total', 'Terjual periode', 'Rate/hari', 'URL']];
-        S.kView.forEach((r) => rows.push([r.comp.name, r.comp.tier, r.k, r.name, (KS.STATUS[r.status] || {}).label, r.price, r.prevPrice, r.priceDelta, r.pricePct == null ? '' : r.pricePct.toFixed(1), r.stock, r.sold, r.sales, r.rate == null ? '' : r.rate.toFixed(2), r.url]));
+        const rows = [['Kompetitor', 'Tier', 'Kategori', 'SKU', 'Nama', 'Status', 'Harga', 'Harga sebelumnya', 'Δ Harga', 'Δ %', 'Stok', 'Terjual total', 'Terjual periode', 'Rate/hari', 'URL']];
+        S.kView.forEach((r) => rows.push([r.comp.name, r.comp.tier, r.comp.cat || '', r.k, r.name, (KS.STATUS[r.status] || {}).label, r.price, r.prevPrice, r.priceDelta, r.pricePct == null ? '' : r.pricePct.toFixed(1), r.stock, r.sold, r.sales, r.rate == null ? '' : r.rate.toFixed(2), r.url]));
         return KS.download('kompetitor.csv', KS.toCSV(rows));
       }
       case 'export-reco': {
@@ -954,6 +1006,20 @@
         S.comps = S.comps.filter((c) => c.id !== d.id);
         dirty();
         return viewSettings();
+      case 'add-cat': {
+        const n = $('#ncat').value.trim();
+        if (n && !allCats().some((c) => c.toLowerCase() === n.toLowerCase())) (S.cats.push(n), persist());
+        return viewSettings();
+      }
+      case 'del-cat': {
+        const n = d.name;
+        const k = S.comps.filter((c) => c.cat === n).length;
+        if (!confirm(`Hapus kategori "${n}"?${k ? ` ${k} toko akan jadi tanpa kategori (data toko tidak dihapus).` : ''}`)) return;
+        S.cats = S.cats.filter((c) => c !== n);
+        S.comps.forEach((c) => c.cat === n && (c.cat = ''));
+        dirty();
+        return viewSettings();
+      }
       case 'add-tier': {
         const t = $('#ntier').value.trim();
         if (t && !S.tiers.includes(t)) (S.tiers.push(t), persist());

@@ -5,6 +5,7 @@ Web statis (tanpa build) untuk memantau scrape toko kompetitor: upload JSON → 
 ## Fitur
 - **Upload hasil scrape** `.xlsx` / `.csv` / `.json` (banyak file sekaligus). Kolom nama/varian/harga/stok/terjual/URL dideteksi otomatis, bisa diubah manual. Format Shopee (satu baris per varian, kolom *Terjual/Bln*) didukung: varian digabung jadi 1 produk (harga = varian tersedia termurah), penjualan dibaca sebagai per bulan. Nama kompetitor ditebak dari nama file `shopee_<toko>_…`.
 - **Per kompetitor & tier** (Agresif, Expert, Reguler, atau tier buatan sendiri). Di Sheet: satu tab per kompetitor, mis. `Agresif - TokoA`.
+- **Kategori buatan sendiri** (mis. Komputer, Laptop, Aksesoris): label tambahan di luar tier, satu per toko. Dibuat di Pengaturan → Kategori, atau langsung saat upload / di halaman Kompetitor. Daftar toko di halaman Kompetitor bisa dikelompokkan menurut Kategori atau Tier, dan Dashboard punya filter kategori. Kategori tersimpan di browser dan ikut Backup/Restore JSON; tidak dikirim ke Google Sheets.
 - **Perbandingan tiap upload**: SKU baru, penjualan naik / turun / laku / stagnan, SKU hilang, harga naik/turun (nominal & %).
 - **Halaman Kompetitor**: buka satu toko atau semua sekaligus, filter status, cari, sort, export CSV.
 - **SKU Matcher**: cocokkan nama produk kompetitor ke katalog (`data/katalog.csv`, 54.592 SKU). Bisa banyak sumber katalog (Drive/Sheet berbeda), review saran, cari manual, setujui massal.

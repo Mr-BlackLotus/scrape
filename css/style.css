@@ -109,6 +109,7 @@ td input[type=text],td select{width:100%;min-width:120px;padding:6px 9px}
 .chip:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.8}
 .chip.up{background:var(--up-bg);color:var(--up)} .chip.ok{background:var(--accent-soft);color:var(--accent)} .chip.down{background:var(--down-bg);color:var(--down)}
 .chip.new{background:var(--new-bg);color:var(--new)} .chip.gone{background:var(--down-bg);color:var(--down)} .chip.tier{background:var(--warn-bg);color:var(--warn)}
+.chip.cat{background:var(--accent-soft);color:var(--accent)}
 .chip.tier:before{display:none}
 .pc{font-weight:600;font-variant-numeric:tabular-nums} .pc.up{color:var(--down)} .pc.dn{color:var(--up)}
 .score{display:inline-block;min-width:38px;font-weight:700;font-variant-numeric:tabular-nums;margin-right:6px}
@@ -129,6 +130,9 @@ td input[type=text],td select{width:100%;min-width:120px;padding:6px 9px}
 .side button:hover{background:var(--hover)}
 .side button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .side .muted{font-variant-numeric:tabular-nums}
+.seg{display:flex;gap:2px;padding:3px;margin:2px 2px 8px;background:var(--flat-bg);border-radius:var(--rs)}
+.side .seg button{flex:1;justify-content:center;padding:5px 8px;font-size:.82rem;font-weight:550;color:var(--muted)}
+.side .seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(15,27,36,.12)}
 #kmain,main>*{min-width:0}
 
 /* ---------- upload ---------- */
