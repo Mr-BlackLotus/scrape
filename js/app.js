@@ -423,7 +423,11 @@
           <label class="btn sm" title="Pulihkan dari file backup JSON (digabung, tidak menimpa)">Restore<input type="file" id="rfile2" accept=".json" hidden></label>
           <button class="btn sm danger" data-act="del-snap">Hapus snapshot</button></div>`
       : `<div class="bar"><h2 style="margin:0">Semua kompetitor</h2><span class="muted small">snapshot terakhir tiap toko</span></div>`;
-    $('#kmain').innerHTML = `${head}
+    const merged = (meta ? [meta.sn[meta.idx]] : S.comps.map(lastSnap)).filter(Boolean).some((sn) => sn.items.some((i) => i.nv > 0));
+    const note = merged
+      ? `<div class="note warn" style="margin:10px 0;padding:10px 14px;border:1px solid var(--line);border-left:3px solid var(--warn,#d99a00);border-radius:10px;font-size:13px"><b>Varian masih digabung</b> — snapshot ini diunggah dengan mode "Gabung varian". Upload ulang file yang sama di menu Upload Scrape (jangan centang "Gabung varian", tanggal sama = snapshot diganti) supaya tiap varian tampil di bawah produknya. Snapshot lama yang masih tergabung tidak bisa dipisah dan tidak akan terbandingkan per varian.</div>`
+      : '';
+    $('#kmain').innerHTML = `${head}${note}
       <div class="tabs">${FILTERS.map(([f, l]) => `<button class="${u.status === f ? 'on' : ''}" data-act="kfilter" data-f="${f}">${l} ${cnt(f)}</button>`).join('')}</div>
       <div class="bar"><input type="search" id="kq" class="grow" placeholder="Cari nama / SKU…" value="${esc(u.q)}"><button class="btn" data-act="export-k">Export CSV</button></div>
       <div id="ktbl"></div>`;
