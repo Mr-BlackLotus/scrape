@@ -187,3 +187,9 @@ a{color:var(--accent);text-underline-offset:2px} a:hover{text-decoration:none}
   #toasts{left:14px;right:14px}.toast{max-width:none}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* varian: baris induk + baris varian di bawahnya */
+tr.ph td{background:var(--bg,#f3f5f9);border-bottom:0;padding-top:10px;padding-bottom:6px}
+tr.ph .nm{font-weight:600}
+tr.vr td{border-top:0;padding-top:5px;padding-bottom:5px}
+tr.vr td:first-child{padding-left:14px}
+tr.vr td .vn{padding-left:14px;color:var(--ink2,#475069);font-size:.93em;border-left:2px solid var(--line)}

@@ -100,6 +100,36 @@
     S.dirty = true;
   }
 
+  // ---------- varian: "nama ▸ varian" ditampilkan sebagai induk + baris varian di bawahnya ----------
+  const VS = ' ▸ ';
+  const splitName = (n) => {
+    const i = String(n).indexOf(VS);
+    return i < 0 ? { base: String(n), v: '' } : { base: n.slice(0, i), v: n.slice(i + VS.length) };
+  };
+  /** kelompokkan baris berdasarkan produk induk (urutan kemunculan pertama), varian menyusul di bawahnya */
+  function grp(list, compOf) {
+    const m = new Map(),
+      out = [];
+    for (const r of list) {
+      const { base, v } = splitName(r.name ?? r.it?.name);
+      const key = (compOf(r) || '') + '|' + base.toLowerCase();
+      let g = v ? m.get(key) : null;
+      if (!g) {
+        g = { base, items: [], hasV: !!v };
+        out.push(g);
+        if (v) m.set(key, g);
+      }
+      g.items.push({ r, v });
+    }
+    return out;
+  }
+  /** html baris: plain bila tanpa varian; kalau ada varian → baris induk lalu baris varian */
+  function grpHTML(groups, ncols, head, row) {
+    return groups
+      .map((g) => (g.hasV ? `<tr class="ph"><td colspan="${ncols}">${head(g)}</td></tr>` + g.items.map((x) => row(x.r, x.v)).join('') : row(g.items[0].r, '')))
+      .join('');
+  }
+
   // ---------- auto match ----------
   async function ensureSugg(onProg, force) {
     if (!S.indexes.length) return;
@@ -278,12 +308,12 @@
     const rows = movRows(u.mov);
     box.innerHTML = `<h2>${titles[u.mov]} <span class="muted small">(${num(rows.length)})</span></h2>` +
       (rows.length
-        ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk</th><th class="n">Harga</th><th class="n">Δ Harga</th><th class="n">Terjual</th><th>Status</th></tr></thead><tbody>${rows
-            .slice(0, 15)
-            .map(
-              (r) => `<tr><td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}</td><td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div></td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${salesCell(r)}</td><td>${chip(r.status)}</td></tr>`
-            )
-            .join('')}</tbody></table></div>${rows.length > 15 ? `<p class="small muted">Menampilkan 15 teratas. <a href="#" data-act="goto-k" data-s="${u.mov}">Lihat semua di halaman Kompetitor</a></p>` : ''}`
+        ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk</th><th class="n">Harga</th><th class="n">Δ Harga</th><th class="n">Terjual</th><th>Status</th></tr></thead><tbody>${grpHTML(
+          grp(rows.slice(0, 15), (r) => r.comp.id),
+          6,
+          (g) => { const f = g.items[0].r; return `<div class="nm">${f.url ? `<a href="${esc(f.url.split('#')[0])}" target="_blank" rel="noopener">${esc(g.base)}</a>` : esc(g.base)}</div><div class="sm2">${esc(f.comp.name)} · ${g.items.length} varian</div>`; },
+          (r, v) => `<tr class="${v ? 'vr' : ''}"><td>${v ? '' : `${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}`}</td><td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div>`}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${salesCell(r)}</td><td>${chip(r.status)}</td></tr>`
+        )}</tbody></table></div>${rows.length > 15 ? `<p class="small muted">Menampilkan 15 teratas. <a href="#" data-act="goto-k" data-s="${u.mov}">Lihat semua di halaman Kompetitor</a></p>` : ''}`
         : empty('Tidak ada.'));
   }
 
@@ -435,12 +465,15 @@
     const th = (k, l, cls) => `<th class="${cls || ''}" data-act="ksort" data-k="${k}">${l}${u.sort === k ? (u.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
     const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
     $('#ktbl').innerHTML = list.length
-      ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual (kolom scrape)', 'n')}${th('rate', 'Penjualan / tren', 'n')}<th class="nosort">Match katalog</th></tr></thead><tbody>${slice
-          .map((r) => {
+      ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual (kolom scrape)', 'n')}${th('rate', 'Penjualan / tren', 'n')}<th class="nosort">Match katalog</th></tr></thead><tbody>${grpHTML(
+          grp(slice, (r) => r.comp.id),
+          (all ? 1 : 0) + 8,
+          (g) => { const f = g.items[0].r; return `<div class="nm">${f.url ? `<a href="${esc(f.url.split('#')[0])}" target="_blank" rel="noopener">${esc(g.base)}</a>` : esc(g.base)}</div><div class="sm2">${all ? esc(f.comp.name) + ' · ' : ''}${g.items.length} varian</div>`; },
+          (r, v) => {
             const m = S.matchOf(r.comp.id, r.k, r.name);
-            return `<tr>${all ? `<td>${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}</td>` : ''}<td><div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div><div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div></td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
-          })
-          .join('')}</tbody></table></div>${pager(list.length, u.page, 'kpage')}`
+            return `<tr class="${v ? 'vr' : ''}">${all ? `<td>${v ? '' : `${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}`}</td>` : ''}<td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div>`}${v ? '' : `<div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div>`}</td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
+          }
+        )}</tbody></table></div>${pager(list.length, u.page, 'kpage')}`
       : empty('Tidak ada data untuk filter ini.');
   }
 
@@ -696,9 +729,12 @@
     S.mView = list;
     const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
     $('#mtbl').innerHTML = list.length
-      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : 'Saran dari katalog'}</th><th></th></tr></thead><tbody>${slice
-          .map((r, i) => {
-            const gi = u.page * PAGE + i;
+      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : 'Saran dari katalog'}</th><th></th></tr></thead><tbody>${grpHTML(
+          grp(slice.map((r, i) => ({ ...r, name: r.it.name, gi: u.page * PAGE + i })), (r) => r.comp.id),
+          4,
+          (g) => { const f = g.items[0].r; return `<div class="nm">${esc(g.base)}</div><div class="sm2">${esc(f.comp.name)} · ${g.items.length} varian</div>`; },
+          (r, v) => {
+            const gi = r.gi;
             let mid;
             if (r.e && !r.e.none) {
               const m = S.matchOf(r.comp.id, r.it.k);
@@ -708,9 +744,9 @@
               mid = `<div class="sugg">${r.sg
                 .map((s, j) => `<button data-act="pick" data-i="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : s.score >= 0.5 ? 'md' : 'lo'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)}${S.indexes.length > 1 ? ' · ' + esc(s.srcName) : ''}</span>${whyChips(s.why)}</button>`)
                 .join('') || '<span class="muted small">Tidak ada kandidat</span>'}</div>`;
-            return `<tr><td>${esc(r.comp.name)}</td><td><div class="nm">${esc(r.it.name)}</div><div class="sm2">${rp(r.it.price)} · ${esc(r.it.k)}</div>${attrLine(r.it.name)}</td><td>${mid}</td><td style="white-space:nowrap"><button class="btn sm" data-act="msearch" data-i="${gi}">Cari…</button> ${r.e ? `<button class="btn sm" data-act="unmatch" data-i="${gi}">Lepas</button>` : `<button class="btn sm" data-act="mnone" data-i="${gi}">Bukan produk kita</button>`}</td></tr>`;
-          })
-          .join('')}</tbody></table></div>${pager(list.length, u.page, 'mpage')}`
+            return `<tr class="${v ? 'vr' : ''}"><td>${v ? '' : esc(r.comp.name)}</td><td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${esc(r.it.name)}</div>`}<div class="sm2">${rp(r.it.price)}${v ? '' : ' · ' + esc(r.it.k)}</div>${v ? '' : attrLine(r.it.name)}</td><td>${mid}</td><td style="white-space:nowrap"><button class="btn sm" data-act="msearch" data-i="${gi}">Cari…</button> ${r.e ? `<button class="btn sm" data-act="unmatch" data-i="${gi}">Lepas</button>` : `<button class="btn sm" data-act="mnone" data-i="${gi}">Bukan produk kita</button>`}</td></tr>`;
+          }
+        )}</tbody></table></div>${pager(list.length, u.page, 'mpage')}`
       : empty(S.indexes.length ? 'Tidak ada item di kategori ini.' : 'Tambahkan / aktifkan katalog dulu.');
   }
 
