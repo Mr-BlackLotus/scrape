@@ -17,7 +17,7 @@
     view: 'dashboard',
     dirty: true,
     D: null,
-    ui: { dash: { mov: 'baru', tier: 'all', cat: 'all', q: '', minSell: 1, onlyMatched: false, page: 0 }, k: { comp: 'all', group: null, status: 'all', q: '', sort: 'name', dir: 1, page: 0, snap: null }, m: { filter: 'review', q: '', page: 0, comp: 'all' } },
+    ui: { dash: { mov: 'baru', tier: 'all', cat: 'all', q: '', minSell: 1, onlyMatched: false, page: 0 }, k: { comp: 'all', group: null, status: 'all', q: '', sort: 'name', dir: 1, page: 0, snap: null }, m: { filter: 'matched', q: '', page: 0, comp: 'all' } },
     pending: [],
     lastResult: null,
   });
@@ -149,10 +149,10 @@
     let changed = false;
     for (let i = 0; i < items.length; i++) {
       const [key, name] = items[i];
-      const c = KS.matchAll(S.indexes, name, 3);
-      S.sugg[key] = c;
-      if (c[0] && c[0].score >= S.settings.matchAuto) {
-        S.matches[key] = { src: c[0].src, id: c[0].id, score: +c[0].score.toFixed(3), manual: false };
+      const b = KS.matchBest(S.indexes, name); // langsung tembak yang merek, tipe, dan warnanya cocok
+      S.sugg[key] = b ? [b] : [];
+      if (b) {
+        S.matches[key] = { src: b.src, id: b.id, score: +b.score.toFixed(3), manual: false };
         changed = true;
       }
       if (i % 300 === 0) {
@@ -662,15 +662,15 @@
       <div class="card"><h2>Sumber katalog</h2><div id="cats"></div>
         <div class="bar" style="margin-top:12px"><input type="text" id="cname" placeholder="Nama sumber (mis. Katalog Gudang B)"><label class="btn">+ Tambah CSV<input type="file" id="cfile" accept=".csv,.tsv,text/csv" hidden></label><span class="help">CSV dengan kolom <code>id</code>, <code>name</code>; opsional <code>hpp</code>/<code>modal</code> untuk hitung margin.</span></div></div>
       <div id="mprog"></div>
-      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><button class="btn" data-act="rematch" title="Hitung ulang match otomatis; match manual tetap">Hitung ulang otomatis</button><button class="btn" data-act="rematch-all" title="Hitung ulang SEMUA, termasuk match manual">Match ulang semua</button><button class="btn danger" data-act="clear-matches" title="Hapus semua data match">Hapus semua match</button><button class="btn pri" data-act="bulk-ok">Setujui semua saran ≥ <span id="bulkpct">60</span>%</button></div>
+      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><button class="btn" data-act="rematch" title="Hitung ulang match otomatis; match manual tetap">Hitung ulang otomatis</button><button class="btn" data-act="rematch-all" title="Hitung ulang SEMUA, termasuk match manual">Match ulang semua</button><button class="btn danger" data-act="clear-matches" title="Hapus semua data match">Hapus semua match</button></div>
         <div class="tabs" id="mtabs"></div>
-        <div class="bar"><input type="search" id="mq" class="grow" placeholder="Cari nama produk kompetitor…" value="${esc(u.q)}"><select id="mcomp"><option value="all">Semua kompetitor</option>${S.comps.map((c) => `<option value="${c.id}" ${u.comp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select><input type="number" id="bulkin" min="40" max="100" value="60" style="width:70px" title="Ambang persetujuan massal (%)"></div>
+        <div class="bar"><input type="search" id="mq" class="grow" placeholder="Cari nama produk kompetitor…" value="${esc(u.q)}"><select id="mcomp"><option value="all">Semua kompetitor</option>${S.comps.map((c) => `<option value="${c.id}" ${u.comp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div id="mtbl"></div></div>`;
     fillCats();
     $('#cfile').onchange = addCatalog;
     $('#mq').oninput = (e) => ((u.q = e.target.value), (u.page = 0), fillMatcher());
     $('#mcomp').onchange = (e) => ((u.comp = e.target.value), (u.page = 0), fillMatcher());
-    $('#bulkin').oninput = (e) => ($('#bulkpct').textContent = e.target.value);
+    
     runSuggUI();
   }
 
@@ -728,12 +728,12 @@
     for (const f of ['matched', 'review', 'none']) (u.filter = f), (counts[f] = matcherItems().length);
     u.filter = keepF;
     u.q = keepQ;
-    $('#mtabs').innerHTML = [['review', 'Perlu review'], ['none', 'Tidak ketemu'], ['matched', 'Sudah match']].map(([f, l]) => `<button class="${u.filter === f ? 'on' : ''}" data-act="mfilter" data-f="${f}">${l} ${num(counts[f])}</button>`).join('');
+    $('#mtabs').innerHTML = [['matched', 'Sudah match'], ['none', 'Tidak ketemu']].map(([f, l]) => `<button class="${u.filter === f ? 'on' : ''}" data-act="mfilter" data-f="${f}">${l} ${num(counts[f])}</button>`).join('');
     const list = matcherItems();
     S.mView = list;
     const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
     $('#mtbl').innerHTML = list.length
-      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : 'Saran dari katalog'}</th><th></th></tr></thead><tbody>${grpHTML(
+      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : 'Tidak ada produk katalog yang cocok'}</th><th></th></tr></thead><tbody>${grpHTML(
           grp(slice.map((r, i) => ({ ...r, name: r.it.name, gi: u.page * PAGE + i })), (r) => r.comp.id),
           4,
           (g) => { const f = g.items[0].r; return `<div class="nm">${esc(g.base)}</div><div class="sm2">${esc(f.comp.name)} · ${g.items.length} varian</div>`; },
@@ -981,13 +981,6 @@
       case 'pick-search': { const r = S.mView[+d.gi]; setMatch(r, S._sres[+d.j], true); modal(null); return fillMatcher(); }
       case 'mnone': S.matches[S.mView[+d.i].key] = { none: true }; dirty(); return fillMatcher();
       case 'unmatch': delete S.matches[S.mView[+d.i].key]; dirty(); return fillMatcher();
-      case 'bulk-ok': {
-        const th = (+$('#bulkin').value || 60) / 100;
-        let n = 0;
-        for (const r of matcherItems()) if (!r.e && r.sg[0] && r.sg[0].score >= th) (setMatch(r, r.sg[0], true), n++);
-        toast(`${n} SKU disetujui`);
-        return fillMatcher();
-      }
       case 'rematch':
         for (const [k, v] of Object.entries(S.matches)) if (!v.manual && !v.none) delete S.matches[k];
         S.sugg = {};

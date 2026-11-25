@@ -132,9 +132,9 @@ function score(c, k, w, wm) {
     if (c.model.size) {
       const ms = [...c.model],
         hit = ms.filter((t) => k.all.has(t));
-      why.push({ l: 'Tipe', s: hit.length === ms.length ? 'ok' : hit.length ? 'part' : 'bad', t: ms.join(' ').toUpperCase() });
+      why.push({ l: 'Tipe', s: hit.length === ms.length ? 'ok' : hit.length * 2 >= ms.length ? 'part' : 'bad', t: ms.join(' ').toUpperCase() });
     }
-    const cc = [...c.all].filter((t) => COLORS.has(t) && (c.vv.has(t) || !c.vv.size)),
+    const cc = [...c.all].filter((t) => COLORS.has(t)),
       kc = [...k.all].filter((t) => COLORS.has(t));
     if (cc.length) why.push(!kc.length ? { l: 'Warna', s: 'na', t: cc.join('/') + ' (katalog tidak menyebut)' } : cc.some((t) => kc.includes(t)) ? { l: 'Warna', s: 'ok', t: cc.join('/') } : { l: 'Warna', s: 'bad', t: cc[0] + ' ≠ ' + kc[0] });
     const q = [...c.vv].filter(isQty).filter((t) => !isSpeed(t));
@@ -179,6 +179,17 @@ function score(c, k, w, wm) {
     }
     out.sort((a, b) => b.score - a.score);
     return out.slice(0, topN);
+  };
+
+  /** langsung tembak 1 match: urut cek merek → tipe → warna (+ukuran varian). Kandidat yang gagal salah satunya dilewati.
+   *  null = tidak ada produk katalog yang merek, tipe, dan warnanya sesuai. */
+  KS.matchBest = function (indexes, name) {
+    for (const m of KS.matchAll(indexes, name, 10)) {
+      if (m.score < KS.THRESH.review) break;
+      if (m.why.some((x) => x.s === 'bad')) continue;
+      return m;
+    }
+    return null;
   };
 
   /** atribut terbaca dari nama produk (untuk ditampilkan): {brand, type, colors[], specs[]} */
