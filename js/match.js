@@ -1,258 +1,171 @@
-/* match.js — SKU matcher: cocokkan nama produk kompetitor ke katalog kita (beberapa sumber katalog) */
+/* match.js — SKU matcher: cocokkan nama produk kompetitor ke katalog kita (beberapa sumber katalog).
+ * Algoritma skor = "SKU Catalog Matcher" (tokenize / prep / score): cakupan nama & katalog berbobot IDF,
+ * penalti merek/kode model/varian/ukuran. Skor 0–1 di aplikasi (0–100 di algoritma aslinya). */
 (function () {
   const KS = window.KS;
+  const VSEP = ' ▸ '; // "nama produk ▸ varian" (varian dari kolom Varian file scrape)
 
-  // ---------------------------------------------------------------------
-  // Normalisasi & pembacaan atribut (merek, warna, tipe, spesifikasi)
-  // ---------------------------------------------------------------------
-  const STOP = new Set(['the', 'and', 'with', 'for', 'dan', 'untuk', 'garansi', 'resmi', 'new', 'baru', 'original', 'ori', 'distributor', 'gb', 'tb', 'mb', 'x', 'by', 'ready', 'stock', 'promo', 'murah', 'free', 'bonus', 'official', 'store']);
+  // ================= inti algoritma (dari SKU Catalog Matcher) =================
+// Tambahkan sinonim/alias sendiri di sini bila perlu (kiri: tulisan di data, kanan: bentuk baku).
+const SYN = { hitam: 'black', putih: 'white', merah: 'red', biru: 'blue', kuning: 'yellow', hijau: 'green', abu: 'gray', grey: 'gray', ungu: 'purple', coklat: 'brown', cokelat: 'brown', emas: 'gold', perak: 'silver', tinta: 'ink', wdc: 'wd', western: 'wd' };
+const STOP = new Set('original ori garansi resmi bergaransi murah termurah promo ready stok stock new baru free gratis ongkir grosir cod diskon sale hot all color colors colour warna ukuran varian variasi size type tipe dan dengan untuk for and with the yang tahun up to upto'.split(' '));
+const COLORS = new Set(['black', 'white', 'red', 'blue', 'green', 'yellow', 'gray', 'silver', 'gold', 'pink', 'purple', 'orange', 'brown', 'cyan', 'magenta', 'clear', 'transparent']);
+// kata kategori produk: bukan merek
+const GENERIC = new Set('tdp radeon vega graphics cooler ssd hdd nvme sata flash flashdisk flashdrive fd drive disk usb ink mouse keyboard headset headphone earphone speaker kabel cable charger adaptor adapter memory memori ram sdcard card micro printer laptop notebook monitor thermal paste pasta pad fan casing case power supply psu vga gpu cpu processor motherboard mainboard router wifi lan hub cartridge toner refill bottle botol set pack paket combo gaming wireless wired bluetooth portable external internal official tv pc led lcd dc ac gen pcie'.split(' '));
+const NOMERGE = new Set('box tray pcs set gen new top pro max mini'.split(' '));   // jangan digabung dengan angka sesudahnya
+const SIBL = new Set(['tray', 'box', 'bulk']);
+const UMAP = { ghz: 'ghz', mhz: 'mhz', gram: 'g', gr: 'g', g: 'g', kilo: 'kg', kg: 'kg', ml: 'ml', liter: 'l', ltr: 'l', l: 'l', gb: 'gb', giga: 'gb', tb: 'tb', mb: 'mb', mm: 'mm', cm: 'cm', watt: 'w', w: 'w', mah: 'mah' };
+const UNIT_RE = /(\d+(?:\.\d+)?)\s*(ghz|mhz|gram|gr|g|kilo|kg|ml|liter|ltr|l|gb|giga|tb|mb|mm|cm|watt|w|mah)\b/g;
+const isQty = t => /^\d+(\.\d+)?(g|kg|ml|l|gb|tb|mb|mm|cm|w|mah|mbps|gbps|ghz|mhz)$/.test(t);
+const isSpeed = t => /(mbps|gbps)$/.test(t);
+const SPEC = /^(m2|gen\d|ddr\d+|usb\d|sata\d?|pcie\d?|22\d{2,3}|\d+\.\d+)$/;   // spesifikasi umum, bukan identitas produk
+const soft = t => SPEC.test(t) || GENERIC.has(t);                                  // bobot dikecilkan saat dibandingkan
+const isModel = t => /\d/.test(t) && !isQty(t) && !SPEC.test(t) && t.length >= 2;   // kode model: 003, MX7, UV250   // kode model: 003, MX7, UV250, 2280
+const union = (a, b) => { const s = new Set(a); for (const w of b) s.add(w); return s; };
 
-  // merek bernama lebih dari satu kata → jadikan satu token
-  const ALIASES = [
-    [/\btp[\s-]?link\b/g, 'tplink'], [/\bd[\s-]?link\b/g, 'dlink'], [/\bcooler\s?master\b/g, 'coolermaster'], [/\blian[\s-]?li\b/g, 'lianli'],
-    [/\bbe\s?quiet!?/g, 'bequiet'], [/\bteam\s?group\b/g, 'teamgroup'], [/\bteam\b/g, 'teamgroup'], [/\bsilicon\s?power\b/g, 'siliconpower'],
-    [/\bwestern\s?digital\b/g, 'wd'], [/\bg[.\s-]?skill\b/g, 'gskill'], [/\bid[\s-]?cooling\b/g, 'idcooling'], [/\bsuper\s?flower\b/g, 'superflower'],
-    [/\bthermal\s?take\b/g, 'thermaltake'], [/\bsteel\s?series\b/g, 'steelseries'], [/\bpower\s?color\b/g, 'powercolor'], [/\bpower\s?logic\b/g, 'powerlogic'],
-    [/\brose\s?gold\b/g, 'rosegold'], [/\babu[\s-]?abu\b/g, 'abu'], [/\bspace\s?(gr[ae]y)\b/g, '$1'],
-  ];
-  const KNOWN_BRANDS = new Set(('asus msi gigabyte asrock biostar intel amd nvidia zotac palit galax inno3d colorful sapphire powercolor xfx pny gainward leadtek manli afox ' +
-    'corsair kingston adata xpg gskill teamgroup crucial samsung wd seagate toshiba sandisk lexar hikvision transcend patriot klevv siliconpower apacer ' +
-    'deepcool coolermaster thermaltake nzxt lianli bequiet noctua arctic idcooling ocypus jonsbo antec aerocool cougar xigmatek phanteks fractal cube montech tecware ' +
-    'fantech rexus logitech razer steelseries redragon rapoo ducky leopold keychron havit armaggeddon alliance ' +
-    'tplink dlink tenda mercusys ubiquiti mikrotik linksys netgear zyxel ruijie hp dell lenovo acer apple xiaomi huawei oppo vivo realme ' +
-    'ugreen baseus anker orico seasonic fsp evga silverstone enermax superflower cwt powerlogic epson canon brother benq viewsonic lg aoc philips sennheiser jbl sony ' +
-    'qnap synology wacom ').split(/\s+/).filter(Boolean));
-  // kata umum yang bukan merek walau sering muncul di awal nama
-  const GENERIC = new Set(['battery', 'kabel', 'cooler', 'digital', 'notebook', 'laptop', 'powerbank', 'toner', 'casing', 'fan', 'kipas', 'mouse', 'keyboard', 'ssd', 'hdd', 'ram', 'vga', 'psu', 'monitor', 'headset', 'speaker', 'printer', 'memory', 'flashdisk', 'flash', 'adaptor', 'charger', 'tinta', 'ink', 'paper', 'cartridge', 'lcd', 'led', 'usb', 'hdmi', 'router', 'switch', 'cable', 'processor', 'motherboard', 'mainboard', 'external', 'internal', 'wireless', 'gaming', 'paket', 'set', 'pc', 'ups', 'stabilizer', 'tas', 'bag', 'case', 'cover', 'screen', 'mousepad', 'webcam', 'microphone', 'mic', 'lampu']);
-  // istilah teknis: bukan merek, tetapi tetap bagian dari tipe produk
-  const TECH = new Set(['argb', 'rgb', 'typec', 'type', 'nvme', 'sata', 'm2', 'pcie', 'ddr3', 'ddr4', 'ddr5', 'usb3', 'wifi', 'bluetooth', 'gen4', 'gen3', 'series', 'pro', 'plus', 'mini', 'max', 'ultra', 'lite']);
-  TECH.forEach((t) => GENERIC.add(t));
-
-  // warna (Indonesia & Inggris) → nama kanonik
-  const COLOR_MAP = {};
-  Object.entries({
-    white: ['white', 'putih'], black: ['black', 'hitam'], red: ['red', 'merah'], blue: ['blue', 'biru'], green: ['green', 'hijau'],
-    grey: ['grey', 'gray', 'abu'], silver: ['silver', 'perak'], gold: ['gold', 'emas'], rosegold: ['rosegold'], pink: ['pink'], yellow: ['yellow', 'kuning'],
-    purple: ['purple', 'ungu'], orange: ['orange', 'oranye', 'jingga'], brown: ['brown', 'coklat', 'cokelat'], beige: ['beige', 'cream', 'krem'],
-  }).forEach(([k, a]) => a.forEach((w) => (COLOR_MAP[w] = k)));
-  const COLOR_ID = { white: 'putih', black: 'hitam', red: 'merah', blue: 'biru', green: 'hijau', grey: 'abu-abu', silver: 'silver', gold: 'gold', rosegold: 'rose gold', pink: 'pink', yellow: 'kuning', purple: 'ungu', orange: 'oranye', brown: 'coklat', beige: 'krem' };
-
-  const num1 = (n) => parseFloat(String(n).replace(',', '.'));
-  /** samakan penulisan satuan: 12cm = 120mm, 1000GB = 1TB, 16 GB = 16gb, 3200 MHz = 3200mhz */
-  function normText(name) {
-    let s = String(name).toLowerCase().replace(/[\[\]()|,;]/g, ' ');
-    for (const [re, to] of ALIASES) s = s.replace(re, to);
-    s = s.replace(/(\d)\s*x\s*(?=\d)/g, '$1 x ');
-    s = s.replace(/(\d+(?:[.,]\d+)?)\s*cm\b/g, (_, n) => Math.round(num1(n) * 10) + 'mm');
-    s = s.replace(/(\d+)\s*mm\b/g, '$1mm');
-    s = s.replace(/(\d+(?:[.,]\d+)?)\s*(gb|tb|mb|mhz|ghz)\b/g, (_, n, u) => {
-      n = num1(n);
-      if (u === 'gb' && [1000, 1024, 2000, 2048, 4000, 4096, 8000, 8192].includes(n)) return n / (n % 1000 === 0 ? 1000 : 1024) + 'tb';
-      return n + u;
-    });
-    s = s.replace(/(\d+)\s*(?:watt|w)\b/g, '$1w');
-    s = s.replace(/(\d+(?:[.,]\d+)?)\s*(?:gram|gr|g)\b/g, (_, n) => num1(n) + 'g'); // 4 gram / 4gr / 4G → 4g
-    s = s.replace(/(\d+(?:[.,]\d+)?)\s*(?:ml|mL)\b/g, (_, n) => num1(n) + 'ml');
-    s = s.replace(/(\d+(?:[.,]\d+)?)\s*(?:inch|inci|in\b|"|''|″)/g, (_, n) => num1(n) + 'inch');
-    s = s.replace(/\bddr\s*([2-5])\b/g, 'ddr$1');
-    return s;
+// "MX-7"="MX7", "4 GRAM"="4Gr"="4G" -> "4g", "hitam"="black", "Gen4x4"="Gen4", "7000MB/s"="7000mbps"
+function tokenize(v) {
+  let s = String(v ?? '').toLowerCase().replace(/\(habis\)/g, ' ');
+  s = s.replace(/(\d),(\d)/g, '$1.$2').replace(/([a-z])-(\d)/g, '$1$2');
+  s = s.replace(/\bgen\s?(\d)x\d\b/g, 'gen$1');
+  s = s.replace(/\b\d+\s*c\s*\/\s*\d+\s*t\b/g, ' ').replace(/\b\d+\s*(?:cores?|threads?)\b/g, ' ');                       // "6C/12T", "6 Core"
+  s = s.replace(/\b\d+\s*(?:tahun|thn|th(?!\s*gen)|years?|yrs?|bulan|bln|months?)\b/g, ' ');                                           // garansi "3 TAHUN"
+  s = s.replace(/(\d+\.\d+)\s*-\s*(\d+\.\d+)\s*ghz/g, '$1ghz $2ghz');                                                               // "3.6-4.6GHZ"
+  s = s.replace(/\b[rw]\s*(\d+(?:\.\d+)?)\s*(mb|gb)\s*\/\s*s\b/g, '$1$2ps');
+  s = s.replace(/(\d+(?:\.\d+)?)\s*(mb|gb)\s*(?:\/\s*s|ps|s)\b/g, '$1$2ps');
+  s = s.replace(/(\d+(?:\.\d+)?)\s*cm\b/g, (m, n) => Math.round(parseFloat(n) * 10) + 'mm'); // tambahan: 12CM = 120mm
+  s = s.replace(UNIT_RE, (m, n, u) => n + UMAP[u]);
+  s = s.replace(/[^a-z0-9.]+/g, ' ').replace(/(?<!\d)\.|\.(?!\d)/g, ' ');
+  const t = s.split(/\s+/).filter(Boolean).map(x => SYN[x] || x).filter(x => !STOP.has(x) && !/^\d+(y|yr|yrs|thn)$/.test(x));
+  const out = [];
+  for (let i = 0; i < t.length; i++) {
+    const a = t[i], b = t[i + 1];
+    if (b && /^[a-z]{1,3}$/.test(a) && /^\d{1,2}$/.test(b) && !COLORS.has(a) && !NOMERGE.has(a)) { out.push(a + b); i++; } // "mx 7" -> "mx7"
+    else out.push(a);
   }
-  function tokenList(s) {
-    const list = [];
-    s.split(/[^a-z0-9.]+/).forEach((t) => {
-      t = t.replace(/^\.+|\.+$/g, '');
-      if (t && !STOP.has(t)) list.push(t); // menurut urutan kata (merek biasanya di depan)
-    });
-    (s.match(/[a-z0-9]+(?:[-\/][a-z0-9]+)+/g) || []).forEach((m) => list.push(m.replace(/[-\/]/g, ''))); // z170-a → z170a (di belakang)
-    return list;
-  }
-  function tokens(name) {
-    return Array.from(new Set(tokenList(normText(name))));
-  }
+  return out;
+}
+const clean = v => tokenize(v).join(' ');
+const hdr = v => String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); // untuk nama kolom (tanpa filter kata)
 
-  const SPEC_TOKEN = /^(\d+(?:\.\d+)?)(mm|gb|tb|mb|mhz|ghz|w|inch|g|ml)$|^ddr\d$|^usb\d?$|^sata\d?$|^pcie\d?$|^\d+$|^\d+x\d+$/;
-  const isSpecTok = (t) => SPEC_TOKEN.test(t);
-  const isModel = (t) => t.length >= 3 && /\d/.test(t) && /[a-z]/.test(t) && !isSpecTok(t);
-  const SPEC_KINDS = [
-    ['mm', /\b(\d{2,4})mm\b/g, 'Ukuran', (v) => v + 'mm'],
-    ['cap', /\b(\d+(?:\.\d+)?)(gb|tb)\b/g, 'Kapasitas', (v, u) => v + u.toUpperCase()],
-    ['mhz', /\b(\d{3,5})mhz\b/g, 'Kecepatan', (v) => v + 'MHz'],
-    ['ddr', /\bddr([2-5])\b/g, 'Tipe RAM', (v) => 'DDR' + v],
-    ['w', /\b(\d{2,4})w\b/g, 'Daya', (v) => v + 'W'],
-    ['inch', /\b(\d{1,2}(?:\.\d)?)inch\b/g, 'Layar', (v) => v + '"'],
-    ['g', /\b(\d+(?:\.\d+)?)g\b/g, 'Berat', (v) => v + 'g'],
-    ['ml', /\b(\d+(?:\.\d+)?)ml\b/g, 'Volume', (v) => v + 'ml'],
-  ];
+function prep(name, variant) {
+  const order = tokenize(name);
+  const n = new Set(order), v = new Set(tokenize(variant));
+  const brand = order.find(t => /^[a-z]{2,}$/.test(t) && !GENERIC.has(t) && !COLORS.has(t)) || '';   // kata pertama yang bukan kategori = merek
+  let vv = v;                                            // token varian yang wajib cocok
+  if (!vv.size) { const q = [...n].filter(t => isQty(t) && !isSpeed(t)); if (q.length === 1) vv = new Set(q); }
+  let nn = n;                                            // token nama (tanpa daftar varian saudara)
+  if (vv.size) nn = new Set([...n].filter(t => !isQty(t) && !((COLORS.has(t) || SIBL.has(t)) && !vv.has(t))));
+  const all = union(n, v);
+  return { n, v, vv, nn, all, brand, cover: union(nn, vv), model: new Set([...all].filter(isModel)) };
+}
+function remap(c, alias) {
+  const f = s => new Set([...s].map(x => alias[x] || x));
+  const o = { ...c, n: f(c.n), v: f(c.v), vv: f(c.vv), nn: f(c.nn), all: f(c.all), model: f(c.model) };
+  o.cover = union(o.nn, o.vv); return o;
+}
 
-  /** baca atribut sebuah nama produk. brands = Set merek yang dikenal */
-  function analyzeRaw(name, brands) {
-    const s = normText(name);
-    const list = tokenList(s);
-    const toks = Array.from(new Set(list));
-    let brand = null;
-    for (const t of list) {
-      if (brands.has(t)) {
-        brand = t;
-        break;
-      }
-    }
-    const colors = [];
-    for (const t of list) if (COLOR_MAP[t] && !colors.includes(COLOR_MAP[t])) colors.push(COLOR_MAP[t]);
-    const specs = {};
-    for (const [k, re] of SPEC_KINDS) {
-      const vals = [];
-      re.lastIndex = 0;
-      let m;
-      while ((m = re.exec(s))) vals.push(k === 'cap' ? m[1] + m[2] : m[1]);
-      if (vals.length) specs[k] = Array.from(new Set(vals));
-    }
-    const colorToks = new Set(Object.keys(COLOR_MAP));
-    const core = toks.filter((t) => t !== brand && !colorToks.has(t));
-    const type = [];
-    for (const t of list) if (t !== brand && !colorToks.has(t) && !isSpecTok(t) && (!GENERIC.has(t) || TECH.has(t)) && !type.includes(t)) type.push(t);
-    return { brand, colors, specs, toks, core, models: core.filter(isModel), type };
+// skor 0-100 antara satu baris kompetitor (c) dan satu produk katalog (k)
+function score(c, k, w, wm) {
+  if (!c.cover.size) return 0;
+  let a = 0, b = 0;
+  for (const t of c.nn) { const x = soft(t) ? 0.3 * w(t) : w(t); b += x; if (k.all.has(t)) a += x; }
+  const nameCover = b ? a / b : 0;                       // seberapa banyak nama kompetitor terjelaskan katalog
+  a = 0; b = 0;
+  for (const t of k.all) { if (isQty(t)) continue; const x = soft(t) ? 0.3 * w(t) : w(t); b += x; if (c.cover.has(t)) a += x; }
+  const catCover = b ? a / b : 0;                        // seberapa banyak nama katalog terjelaskan kompetitor
+  let s = 0.65 * nameCover + 0.35 * catCover;
+  if (c.brand && !k.all.has(c.brand)) s *= 0.3;          // merek berbeda / tidak ada
+  { const cc = [...c.all].filter((t) => COLORS.has(t)); if (cc.length && !cc.some((t) => k.all.has(t)) && [...k.all].some((t) => COLORS.has(t))) s *= 0.5; } // tambahan: warna beda (White ≠ Black)
+  if (c.model.size) {
+    let tot = 0, miss = 0, top = 0; for (const t of c.model) top = Math.max(top, wm(t));
+    for (const t of c.model) { const x = wm(t); if (x < 0.6 * top) continue; tot += x; if (!k.all.has(t)) miss += x; }   // hanya kode yang paling khas
+    if (miss) { s *= 1 - 0.65 * miss / tot; for (const t of k.model) if (!c.all.has(t)) { s *= 0.75; break; } } // kode model hilang / katalog punya kode lain
+    else if (tot) s += (1 - s) * 0.4;                                                                          // semua kode model khas cocok: identitas produk terkonfirmasi
+  } else if (k.model.size) s *= 0.9;
+  if (c.vv.size) {                                       // varian harus cocok
+    let hit = 0, q = 0, qhit = 0;
+    for (const t of c.vv) { const h = k.all.has(t); if (h) hit++; if (isQty(t)) { q++; if (h) qhit++; } }
+    s *= 0.4 + 0.6 * hit / c.vv.size;
+    if (q && !qhit && [...k.all].some(isQty)) s *= 0.6;  // ukuran berbeda (2g vs 4g)
   }
+  return Math.round(100 * s);
+}
 
-  const VSEP = ' ▸ ';
-  /** nama item scrape bisa berbentuk "nama produk ▸ varian": spesifikasi & warna dari varian menggantikan yang ada di nama
-   *  (mis. "MX-7 2G 4G 8G ▸ 4G" → berat 4g saja) */
-  function analyze(name, brands) {
-    name = String(name);
-    const i = name.indexOf(VSEP);
-    if (i < 0) return analyzeRaw(name, brands);
-    const a = analyzeRaw(name.slice(0, i), brands);
-    const v = analyzeRaw(name.slice(i + VSEP.length), brands);
-    for (const [k, , , fmt] of SPEC_KINDS) {
-      if (!v.specs[k]) continue;
-      const tk = (x) => (k === 'cap' ? x : fmt(x).toLowerCase());
-      const stale = new RegExp('^' + (SPEC_KINDS.find((z) => z[0] === k)[1].source.replace(/\\b/g, '')) + '$');
-      const drop = (t) => stale.test(t);
-      a.core = a.core.filter((t) => !drop(t));
-      a.toks = a.toks.filter((t) => !drop(t));
-      a.type = a.type.filter((t) => !drop(t));
-      for (const x of v.specs[k]) {
-        const t = tk(x);
-        if (!a.toks.includes(t)) a.toks.push(t);
-        if (!a.core.includes(t)) a.core.push(t);
-      }
-      a.specs[k] = v.specs[k];
-    }
-    if (v.colors.length) a.colors = v.colors;
-    return a;
-  }
-
+  // ================= adaptasi ke aplikasi =================
   /** bangun index untuk sumber katalog: rows = [[id,name,cost,price],...] */
   KS.buildIndex = async function (cat, onProgress) {
-    const rows = cat.rows;
-    const inv = new Map();
-    const toks = new Array(rows.length);
-    const firstCount = new Map();
-    for (let i = 0; i < rows.length; i++) {
-      const t = tokens(rows[i][1]);
-      toks[i] = t;
-      if (t.length) firstCount.set(t[0], (firstCount.get(t[0]) || 0) + 1);
-      for (const x of t) {
-        let a = inv.get(x);
-        if (!a) inv.set(x, (a = []));
-        a.push(i);
+    const rows = cat.rows,
+      N = rows.length;
+    const preps = new Array(N),
+      index = new Map(),
+      byPre = new Map();
+    for (let i = 0; i < N; i++) {
+      const k = (preps[i] = prep(rows[i][1], ''));
+      for (const t of k.all) {
+        let p = index.get(t);
+        if (!p) index.set(t, (p = []));
+        p.push(i);
       }
-      if (i % 8000 === 0) {
-        onProgress && onProgress(i / rows.length);
+      if (i % 6000 === 0) {
+        onProgress && onProgress(i / N);
         await KS.tick();
       }
     }
-    const N = rows.length;
-    const idf = new Map();
-    for (const [t, a] of inv) idf.set(t, Math.log(1 + N / a.length));
-    // merek = merek yang dikenal + kata pertama nama katalog yang muncul ≥3 kali dan bukan kata umum
-    const brands = new Set(KNOWN_BRANDS);
-    for (const [t, n] of firstCount) if (n >= 3 && t.length >= 2 && !/^\d/.test(t) && !GENERIC.has(t) && n / (inv.get(t) || [0]).length >= 0.3) brands.add(t);
-    GENERIC.forEach((g) => KNOWN_BRANDS.has(g) || brands.delete(g));
-    return { id: cat.id, name: cat.name, rows, inv, toks, idf, N, brands, attrs: new Array(N) };
+    for (const t of index.keys()) if (isModel(t) && t.length >= 3) { const key = t.slice(0, 3); (byPre.get(key) || byPre.set(key, []).get(key)).push(t); }
+    const memo = new Map(), memoM = new Map();
+    const w = (t) => { let x = memo.get(t); if (x === undefined) { const p = index.get(t); x = p ? Math.log(1 + N / p.length) : 1; memo.set(t, x); } return x; };
+    const wm = (t) => { let x = memoM.get(t); if (x === undefined) { const p = index.get(t); x = Math.log(1 + N / (p ? p.length : 0.5)); memoM.set(t, x); } return x; };
+    return { id: cat.id, name: cat.name, rows, N, preps, index, byPre, w, wm, maxPost: Math.max(300, N * 0.2), acc: new Float64Array(N) };
   };
 
-  const w = (idx, t) => idx.idf.get(t) ?? Math.log(1 + idx.N); // token tidak dikenal = langka
-  const attrOf = (idx, i) => idx.attrs[i] || (idx.attrs[i] = analyze(idx.rows[i][1], idx.brands));
-  const sumW = (idx, arr) => arr.reduce((s, t) => s + w(idx, t) * (GENERIC.has(t) && !TECH.has(t) ? 0.35 : 1), 0);
+  const splitV = (name) => {
+    name = String(name ?? '');
+    const i = name.indexOf(VSEP);
+    return i < 0 ? [name, ''] : [name.slice(0, i), name.slice(i + VSEP.length)];
+  };
 
-  /** bandingkan dua atribut → { sc, caps, why } */
-  function compareAttrs(idx, q, c) {
+  /** chip penjelasan: merek, tipe, warna, varian/ukuran */
+  function whyOf(c, k) {
     const why = [];
-    const cap = { v: 1 };
-    const lim = (x) => (cap.v = Math.min(cap.v, x));
-
-    // tipe / model: kemiripan token inti berbobot IDF
-    const qs = new Set(q.core);
-    let shared = 0;
-    for (const t of c.core) if (qs.has(t)) shared += w(idx, t);
-    const qSum = sumW(idx, q.core),
-      cSum = sumW(idx, c.core);
-    let core = qSum && cSum ? 0.35 * ((2 * shared) / (qSum + cSum)) + 0.65 * (shared / Math.min(qSum, cSum)) : 0;
-    core = Math.pow(core, 1.35); // overlap lemah = skor jauh lebih rendah
-    const cs = new Set(c.core);
-    let modelMul = 1;
-    if (q.models.length) {
-      const hit = q.models.filter((m) => cs.has(m));
-      if (!hit.length) lim(0.45), (modelMul = 0.8);
-      else if (hit.length < q.models.length) modelMul = 0.95;
-      if (hit.length) core = Math.max(core, 0.62 * Math.min(1, hit.length / Math.min(q.models.length, 2)));
-      why.push({ l: 'Tipe', s: hit.length === q.models.length ? 'ok' : hit.length ? 'part' : 'bad', t: q.models.join(' ').toUpperCase() });
-    } else why.push({ l: 'Tipe', s: core >= 0.8 ? 'ok' : core >= 0.5 ? 'part' : 'bad', t: q.type.slice(0, 4).join(' ') });
-    // katalog punya kode tipe yang tidak ada di query (mis. E1404TA vs E1404FA) = kemungkinan varian lain
-    const pre = (a, b) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return i; };
-    const extra = c.models.filter((m) => !qs.has(m) && q.models.some((x) => !cs.has(x) && pre(x, m) >= 4));
-    if (extra.length && q.models.length) modelMul *= extra.length > 1 ? 0.82 : 0.9;
-
-    // merek
-    let brandB = q.brand || c.brand ? 0.97 : 1;
-    if (q.brand && c.brand) {
-      if (q.brand === c.brand) (brandB = 1), why.unshift({ l: 'Merek', s: 'ok', t: q.brand });
-      else (brandB = 0.5), lim(0.4), why.unshift({ l: 'Merek', s: 'bad', t: `${q.brand} ≠ ${c.brand}` });
-    } else if (q.brand) why.unshift({ l: 'Merek', s: 'na', t: `${q.brand} (katalog tidak menyebut)` });
-
-    // warna
-    let colorB = q.colors.length || c.colors.length ? 0.97 : 1;
-    if (q.colors.length && c.colors.length) {
-      if (q.colors.some((x) => c.colors.includes(x))) (colorB = 1), why.push({ l: 'Warna', s: 'ok', t: q.colors.map((x) => COLOR_ID[x]).join('/') });
-      else (colorB = 0.7), lim(0.62), why.push({ l: 'Warna', s: 'bad', t: `${COLOR_ID[q.colors[0]]} ≠ ${COLOR_ID[c.colors[0]]}` });
-    } else if (q.colors.length) why.push({ l: 'Warna', s: 'na', t: `${COLOR_ID[q.colors[0]]} (katalog tidak menyebut)` });
-
-    // spesifikasi: sama jika ada nilai yang sama; beda jika sama-sama menyebut tapi tidak ada yang sama
-    for (const [k, , label, fmt] of SPEC_KINDS) {
-      const a = q.specs[k],
-        b = c.specs[k];
-      if (!a) continue;
-      const f = (x) => (k === 'cap' ? fmt(x.replace(/[a-z]+$/, ''), x.replace(/[\d.]+/, '')) : fmt(x));
-      if (b && a.some((x) => b.includes(x))) why.push({ l: label, s: 'ok', t: a.map(f).join(' / ') });
-      else if (b) (lim(0.6), why.push({ l: label, s: 'bad', t: `${a.map(f).join('/')} ≠ ${b.map(f).join('/')}` }));
-      else why.push({ l: label, s: 'na', t: `${a.map(f).join('/')} (katalog tidak menyebut)` });
+    if (c.brand) why.push(k.all.has(c.brand) ? { l: 'Merek', s: 'ok', t: c.brand } : { l: 'Merek', s: 'bad', t: c.brand + ' tidak ada di katalog' });
+    if (c.model.size) {
+      const ms = [...c.model],
+        hit = ms.filter((t) => k.all.has(t));
+      why.push({ l: 'Tipe', s: hit.length === ms.length ? 'ok' : hit.length ? 'part' : 'bad', t: ms.join(' ').toUpperCase() });
     }
-    const score = Math.min(cap.v, core * modelMul * brandB * colorB);
-    return { score, why };
+    const cc = [...c.all].filter((t) => COLORS.has(t) && (c.vv.has(t) || !c.vv.size)),
+      kc = [...k.all].filter((t) => COLORS.has(t));
+    if (cc.length) why.push(!kc.length ? { l: 'Warna', s: 'na', t: cc.join('/') + ' (katalog tidak menyebut)' } : cc.some((t) => kc.includes(t)) ? { l: 'Warna', s: 'ok', t: cc.join('/') } : { l: 'Warna', s: 'bad', t: cc[0] + ' ≠ ' + kc[0] });
+    const q = [...c.vv].filter(isQty).filter((t) => !isSpeed(t));
+    if (q.length) {
+      const kq = [...k.all].filter((t) => isQty(t) && !isSpeed(t));
+      why.push(!kq.length ? { l: 'Ukuran', s: 'na', t: q.join('/') + ' (katalog tidak menyebut)' } : q.some((t) => kq.includes(t)) ? { l: 'Ukuran', s: 'ok', t: q.join('/') } : { l: 'Ukuran', s: 'bad', t: q.join('/') + ' ≠ ' + kq.join('/') });
+    }
+    return why;
   }
 
-  /** cari kandidat terbaik di 1 index → [{i,score,why}] */
+  /** cari kandidat terbaik di 1 index → [{i,score(0-1),why}] */
   KS.matchOne = function (idx, name, topN = 3) {
-    const q = analyze(name, idx.brands);
-    if (!q.toks.length) return [];
-    const cand = new Map();
-    for (const t of q.toks) {
-      const a = idx.inv.get(t);
-      if (!a || a.length > 4000) continue;
-      const wt = w(idx, t);
-      for (const i of a) cand.set(i, (cand.get(i) || 0) + wt);
-    }
-    if (!cand.size) return [];
-    const top = Array.from(cand.entries())
-      .sort((x, y) => y[1] - x[1])
-      .slice(0, 80);
-    const res = [];
-    for (const [i] of top) {
-      const r = compareAttrs(idx, q, attrOf(idx, i));
-      res.push({ i, score: r.score, why: r.why });
-    }
-    res.sort((a, b) => b.score - a.score);
-    return res.slice(0, topN);
+    const [nm, vr] = splitV(name);
+    let c = prep(nm, vr);
+    if (!c.cover.size) return [];
+    const { index, byPre, w, wm, acc } = idx;
+    const alias = {};
+    for (const t of c.model) if (!index.has(t) && t.length >= 3) { const u = (byPre.get(t.slice(0, 3)) || []).find((u) => u !== t && Math.abs(u.length - t.length) <= 1 && (t.startsWith(u) || u.startsWith(t))); if (u) alias[t] = u; }
+    if (Object.keys(alias).length) c = remap(c, alias);
+    const touched = [];
+    const collect = (skipCommon) => { for (const t of c.all) { const p = index.get(t); if (!p || (skipCommon && p.length > idx.maxPost)) continue; const x = w(t); for (let q = 0; q < p.length; q++) { const i = p[q]; if (acc[i] === 0) touched.push(i); acc[i] += x; } } };
+    collect(true);
+    if (!touched.length) collect(false);
+    if (!touched.length) return [];
+    let max = 0;
+    for (const i of touched) if (acc[i] > max) max = acc[i];
+    let cand = touched.filter((i) => acc[i] >= max * 0.35);
+    if (cand.length > 80) cand = cand.sort((x, y) => acc[y] - acc[x]).slice(0, 80);
+    for (const i of touched) acc[i] = 0;
+    const sc = cand.map((i) => ({ i, s: score(c, idx.preps[i], w, wm) })).sort((x, y) => y.s - x.s || x.i - y.i);
+    return sc.slice(0, topN).map((x) => ({ i: x.i, score: x.s / 100, why: whyOf(c, idx.preps[x.i]) }));
   };
 
   /** cari di semua index → kandidat gabungan [{src,id,name,cost,price,score,why}] */
@@ -269,16 +182,19 @@
   };
 
   /** atribut terbaca dari nama produk (untuk ditampilkan): {brand, type, colors[], specs[]} */
-  KS.parseProduct = function (name, indexes) {
-    const brands = new Set(KNOWN_BRANDS);
-    (indexes || []).forEach((x) => x.brands.forEach((b) => brands.add(b)));
-    const a = analyze(name, brands);
-    const specs = [];
-    for (const [k, , label, fmt] of SPEC_KINDS) if (a.specs[k]) specs.push({ l: label, v: a.specs[k].map((x) => (k === 'cap' ? fmt(x.replace(/[a-z]+$/, ''), x.replace(/[\d.]+/, '')) : fmt(x))).join(' / ') });
-    return { brand: a.brand, type: a.type.map((t) => (/\d/.test(t) || t.length <= 4 ? t.toUpperCase() : t[0].toUpperCase() + t.slice(1))).join(' '), colors: a.colors.map((c) => COLOR_ID[c]), specs };
+  KS.parseProduct = function (name) {
+    const [nm, vr] = splitV(name);
+    const c = prep(nm, vr);
+    const q = [...(c.vv.size ? c.vv : c.n)].filter((t) => isQty(t) && !isSpeed(t));
+    return {
+      brand: c.brand,
+      type: [...c.model].join(' ').toUpperCase(),
+      colors: [...c.all].filter((t) => COLORS.has(t)),
+      specs: q.length ? [{ l: 'Ukuran/kapasitas', v: q.join(' / ') }] : [],
+    };
   };
 
-  KS.THRESH = { auto: 0.75, review: 0.5 };
+  KS.THRESH = { auto: 0.72, review: 0.45 };
 
   /** parse CSV katalog → rows [[id,name,cost,price]] ; deteksi kolom id/name/hpp/harga */
   KS.parseCatalog = function (text) {

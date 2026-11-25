@@ -4,7 +4,7 @@
   const { $, $$, esc, rp, num, fmtDate } = KS;
 
   const S = (KS.S = {
-    settings: { apiUrl: '', token: '', strategy: 'median', round: 100, upRatio: 1.25, downRatio: 0.75, autoSync: true, matchAuto: 0.75 },
+    settings: { apiUrl: '', token: '', strategy: 'median', round: 100, upRatio: 1.25, downRatio: 0.75, autoSync: true, matchAuto: 0.72 },
     comps: [],
     tiers: ['Agresif', 'Expert', 'Reguler'],
     cats: [], // kategori buatan sendiri (mis. Komputer, Laptop, Aksesoris); comp.cat menunjuk salah satunya
@@ -475,7 +475,7 @@
           (g) => { const f = g.items[0].r; return `<div class="nm">${f.url ? `<a href="${esc(f.url.split('#')[0])}" target="_blank" rel="noopener">${esc(g.base)}</a>` : esc(g.base)}</div><div class="sm2">${all ? esc(f.comp.name) + ' · ' : ''}${g.items.length} varian</div>`; },
           (r, v) => {
             const m = S.matchOf(r.comp.id, r.k, r.name);
-            return `<tr class="${v ? 'vr' : ''}">${all ? `<td>${v ? '' : `${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}`}</td>` : ''}<td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div>`}${v ? '' : `<div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div>`}</td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
+            return `<tr class="${v ? 'vr' : ''}">${all ? `<td>${v ? '' : `${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}`}</td>` : ''}<td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div>`}${v ? '' : `<div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div>`}</td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= KS.THRESH.auto ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
           }
         )}</tbody></table></div>${pager(list.length, u.page, 'kpage')}`
       : empty('Tidak ada data untuk filter ini.');
@@ -742,11 +742,11 @@
             let mid;
             if (r.e && !r.e.none) {
               const m = S.matchOf(r.comp.id, r.it.k);
-              mid = m ? `<span class="score ${m.score >= 0.75 ? 'hi' : 'md'}">${r.e.manual ? '✓' : Math.round(m.score * 100) + '%'}</span>${esc(m.name)} <span class="muted small">ID ${esc(m.id)}</span>` : '<span class="muted">katalog tidak aktif</span>';
+              mid = m ? `<span class="score ${m.score >= KS.THRESH.auto ? 'hi' : 'md'}">${r.e.manual ? '✓' : Math.round(m.score * 100) + '%'}</span>${esc(m.name)} <span class="muted small">ID ${esc(m.id)}</span>` : '<span class="muted">katalog tidak aktif</span>';
             } else if (r.e && r.e.none) mid = '<span class="muted">Ditandai: bukan produk kita</span>';
             else
               mid = `<div class="sugg">${r.sg
-                .map((s, j) => `<button data-act="pick" data-i="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : s.score >= 0.5 ? 'md' : 'lo'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)}${S.indexes.length > 1 ? ' · ' + esc(s.srcName) : ''}</span>${whyChips(s.why)}</button>`)
+                .map((s, j) => `<button data-act="pick" data-i="${gi}" data-j="${j}"><span class="score ${s.score >= KS.THRESH.auto ? 'hi' : s.score >= KS.THRESH.review ? 'md' : 'lo'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)}${S.indexes.length > 1 ? ' · ' + esc(s.srcName) : ''}</span>${whyChips(s.why)}</button>`)
                 .join('') || '<span class="muted small">Tidak ada kandidat</span>'}</div>`;
             return `<tr class="${v ? 'vr' : ''}"><td>${v ? '' : esc(r.comp.name)}</td><td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${esc(r.it.name)}</div>`}<div class="sm2">${rp(r.it.price)}${v ? '' : ' · ' + esc(r.it.k)}</div>${v ? '' : attrLine(r.it.name)}</td><td>${mid}</td><td style="white-space:nowrap"><button class="btn sm" data-act="msearch" data-i="${gi}">Cari…</button> ${r.e ? `<button class="btn sm" data-act="unmatch" data-i="${gi}">Lepas</button>` : `<button class="btn sm" data-act="mnone" data-i="${gi}">Bukan produk kita</button>`}</td></tr>`;
           }
@@ -759,7 +759,7 @@
     modal(`<h2>Cari di katalog</h2><p class="sub" style="margin-bottom:6px">${esc(r.it.name)}</p>${attrLine(r.it.name)}<div style="height:12px"></div><input type="search" id="sq" style="width:100%" value="${esc(r.it.name)}" autofocus><div id="sres" style="margin-top:12px"></div><div class="bar" style="margin-top:14px"><span class="grow"></span><button class="btn" data-act="close">Tutup</button></div>`);
     const go = () => {
       const c = KS.matchAll(S.indexes, $('#sq').value, 8);
-      $('#sres').innerHTML = `<div class="sugg">${c.map((s, j) => `<button data-act="pick-search" data-gi="${gi}" data-j="${j}"><span class="score ${s.score >= 0.75 ? 'hi' : 'md'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)} · ${esc(s.srcName)}</span>${whyChips(s.why)}</button>`).join('') || '<span class="muted">Tidak ada hasil</span>'}</div>`;
+      $('#sres').innerHTML = `<div class="sugg">${c.map((s, j) => `<button data-act="pick-search" data-gi="${gi}" data-j="${j}"><span class="score ${s.score >= KS.THRESH.auto ? 'hi' : 'md'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)} · ${esc(s.srcName)}</span>${whyChips(s.why)}</button>`).join('') || '<span class="muted">Tidak ada hasil</span>'}</div>`;
       S._sres = c;
     };
     $('#sq').oninput = go;
@@ -789,7 +789,7 @@
         <label class="fld">Pembulatan<select id="sround"><option value="1" ${st.round == 1 ? 'selected' : ''}>Tidak</option><option value="100" ${st.round == 100 ? 'selected' : ''}>Rp 100</option><option value="1000" ${st.round == 1000 ? 'selected' : ''}>Rp 1.000</option></select></label>
         <label class="fld">"Naik" jika laju ≥ × periode lalu<input type="number" step="0.05" id="sup" value="${st.upRatio}"></label>
         <label class="fld">"Turun" jika laju ≤ × periode lalu<input type="number" step="0.05" id="sdown" value="${st.downRatio}"></label>
-        <label class="fld">Auto-match jika skor ≥<input type="number" step="0.05" min="0.5" max="1" id="smatch" value="${st.matchAuto}"></label></div>
+        <label class="fld">Auto-match jika skor ≥<input type="number" step="0.05" min="0.4" max="1" id="smatch" value="${st.matchAuto}"></label></div>
         <div class="bar" style="margin-top:12px"><button class="btn pri" data-act="save-rules">Simpan aturan</button></div>
         <p class="help">Penjualan dihitung dari selisih kolom <i>terjual</i> antar scrape; jika tidak ada, dari penurunan <i>stok</i> (restock tidak dihitung sebagai penjualan). Status naik/turun membandingkan laju per hari periode ini vs periode sebelumnya (butuh ≥3 scrape).</p></div></div>
       <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th>Kategori</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td><select data-ccat="${c.id}">${catOpts(c.cat)}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td style="white-space:nowrap"><button class="btn sm" data-act="backup-comp" data-id="${c.id}">Backup</button> <button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
@@ -1029,8 +1029,8 @@
         st.strategy = $('#sstrat').value;
         st.round = +$('#sround').value;
         st.upRatio = +$('#sup').value || 1.25;
-        st.downRatio = +$('#sdown').value || 0.75;
-        st.matchAuto = +$('#smatch').value || 0.75;
+        st.downRatio = +$('#sdown').value || 0.72;
+        st.matchAuto = +$('#smatch').value || 0.72;
         dirty();
         return toast('Aturan disimpan');
       }
