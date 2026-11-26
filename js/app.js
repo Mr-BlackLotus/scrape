@@ -69,8 +69,38 @@
     const snaps = await KS.db.snapAll();
     snaps.sort((a, b) => a.date.localeCompare(b.date));
     for (const s of snaps) (S.snaps[s.compId] = S.snaps[s.compId] || []).push(s);
+    S.catalogs = await KS.db.catAll();
+    if (!S.catalogs.length) await loadBundledCatalog();
+    await rebuildIndexes();
   }
 
+  async function loadBundledCatalog() {
+    try {
+      const r = await fetch('data/katalog.csv');
+      if (!r.ok) return;
+      const rows = KS.parseCatalog(await r.text());
+      if (rows.length) {
+        const c = { id: 'cat-utama', name: 'Katalog Utama', rows, enabled: true };
+        S.catalogs.push(c);
+        await KS.db.catPut(c);
+      }
+    } catch (e) {}
+  }
+
+  async function rebuildIndexes(prog) {
+    S.indexes = [];
+    S.catMap = {};
+    S.sugg = {};
+    for (const c of S.catalogs) {
+      const m = new Map();
+      for (const r of c.rows) if (!m.has(String(r[0]))) m.set(String(r[0]), r);
+      S.catMap[c.id] = m;
+      if (c.enabled) S.indexes.push(await KS.buildIndex(c, prog));
+    }
+    S.dirty = true;
+  }
+
+  // ---------- varian: "nama ▸ varian" ditampilkan sebagai induk + baris varian di bawahnya ----------
   const VS = ' ▸ ';
   const splitName = (n) => {
     const i = String(n).indexOf(VS);
@@ -100,6 +130,40 @@
       .join('');
   }
 
+  // ---------- auto match ----------
+  async function ensureSugg(onProg, force) {
+    if (!S.indexes.length) return;
+    const items = [];
+    for (const c of S.comps) {
+      const l = lastSnap(c.id);
+      if (!l) continue;
+      for (const it of l.items) {
+        const key = c.id + '|' + it.k;
+        const e = S.matches[key];
+        if (e && !e.none) continue;
+        if (e && e.none) continue;
+        if (S.sugg[key] && !force) continue;
+        items.push([key, it.name]);
+      }
+    }
+    let changed = false;
+    for (let i = 0; i < items.length; i++) {
+      const [key, name] = items[i];
+      const b = KS.matchBest(S.indexes, name); // langsung tembak yang merek, tipe, dan warnanya cocok
+      S.sugg[key] = b ? [b] : [];
+      if (b) {
+        S.matches[key] = { src: b.src, id: b.id, score: +b.score.toFixed(3), manual: false };
+        changed = true;
+      }
+      if (i % 300 === 0) {
+        onProg && onProg(i / items.length);
+        await KS.tick();
+      }
+    }
+    onProg && onProg(1);
+    if (changed) dirty();
+  }
+
   // ---------- dashboard compute ----------
   function compute() {
     if (S.D && !S.dirty) return S.D;
@@ -115,6 +179,7 @@
       T.skus += s.total;
       ['baru', 'naik', 'turun', 'hargaNaik', 'hargaTurun', 'hilang'].forEach((k) => (T[k] += s[k]));
       T.hasPrev = T.hasPrev || a.hasPrev;
+      for (const r of a.rows) if (S.matches[comp.id + '|' + r.k] && !S.matches[comp.id + '|' + r.k].none) T.matched++;
     }
     S.D = { A, groups, T };
     S.dirty = false;
@@ -127,6 +192,18 @@
     return `<span class="chip ${m.cls}">${m.label}</span>`;
   };
   const tierChip = (t) => `<span class="chip tier">${esc(t)}</span>`;
+  /** chip penjelasan kenapa kandidat cocok / tidak (merek, tipe, warna, ukuran…) */
+  const whyChips = (why) => (why && why.length ? `<span class="why">${why.map((x) => `<span class="w ${x.s}">${esc(x.l)}${x.s === 'ok' ? ' ✓' : x.s === 'bad' ? ' ✗' : ''} ${esc(x.t)}</span>`).join('')}</span>` : '');
+  /** atribut yang terbaca dari nama produk kompetitor */
+  const attrLine = (name) => {
+    const a = KS.parseProduct(name, S.indexes);
+    const parts = [];
+    if (a.brand) parts.push(`Merek <b>${esc(a.brand)}</b>`);
+    if (a.type) parts.push(`Tipe <b>${esc(a.type)}</b>`);
+    if (a.colors.length) parts.push(`Warna <b>${esc(a.colors.join('/'))}</b>`);
+    a.specs.forEach((x) => parts.push(`${esc(x.l)} <b>${esc(x.v)}</b>`));
+    return parts.length ? `<div class="attrs">${parts.map((x) => `<span>${x}</span>`).join('')}</div>` : '';
+  };
   const catChip = (c) => (c ? `<span class="chip cat">${esc(c)}</span>` : '');
   const allCats = () => [...new Set([...S.cats, ...S.comps.map((c) => c.cat).filter(Boolean)])];
   const catOpts = (sel, extra = '') => `<option value="">(tanpa kategori)</option>${allCats().map((t) => `<option ${sel === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}${extra}`;
@@ -172,7 +249,7 @@
     const okCount = D.groups.filter((g) => g.ok).length;
     main.innerHTML = `
       <h1>Dashboard</h1>
-      <p class="sub">${S.comps.length} kompetitor · ${num(T.skus)} SKU terpantau</p>
+      <p class="sub">${S.comps.length} kompetitor · ${num(T.skus)} SKU terpantau · ${T.skus ? Math.round((T.matched / T.skus) * 100) : 0}% sudah ter-match ke katalog</p>
       <div class="kpis">
         ${k('baru', T.baru, 'SKU baru naik', 'new')}${k('naik', T.naik, 'Penjualan naik', 'up')}${k('turun', T.turun, 'Penjualan turun', 'down')}
         ${k('hargaNaik', T.hargaNaik, 'Harga naik')}${k('hargaTurun', T.hargaTurun, 'Harga turun')}${k('hilang', T.hilang, 'SKU hilang')}
@@ -187,6 +264,7 @@
           <select id="rtier"><option value="all">Semua tier</option>${S.tiers.map((t) => `<option ${u.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
           ${allCats().length ? `<select id="rcat"><option value="all">Semua kategori</option>${allCats().map((t) => `<option ${u.cat === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}
           <select id="rmin">${[1, 2, 3].map((n) => `<option value="${n}" ${u.minSell == n ? 'selected' : ''}>≥ ${n} kompetitor menjual</option>`).join('')}</select>
+          <label class="small"><input type="checkbox" id="rmatch" ${u.onlyMatched ? 'checked' : ''}> hanya yang ada di katalog</label>
           <button class="btn" data-act="export-reco">Export CSV</button>
         </div>
         <div id="reco"></div>
@@ -198,6 +276,7 @@
     $('#rtier').onchange = (e) => ((u.tier = e.target.value), (u.page = 0), fillReco());
     if ($('#rcat')) $('#rcat').onchange = (e) => ((u.cat = e.target.value), (u.page = 0), fillReco());
     $('#rmin').onchange = (e) => ((u.minSell = +e.target.value), (u.page = 0), fillReco());
+    $('#rmatch').onchange = (e) => ((u.onlyMatched = e.target.checked), (u.page = 0), fillReco());
   }
 
   function movRows(key) {
@@ -244,6 +323,7 @@
     return compute().groups.filter((g) => {
       if (!g.ok) return false;
       if (g.nSellers < u.minSell && !(u.minSell === 1 && g.nSellers === 0)) return false;
+      if (u.onlyMatched && !g.match) return false;
       if (u.tier !== 'all' && !g.offers.some((o) => o.comp.tier === u.tier)) return false;
       if (u.cat !== 'all' && !g.offers.some((o) => o.comp.cat === u.cat)) return false;
       if (q && !(g.name.toLowerCase().includes(q) || (g.match && String(g.match.id).includes(q)))) return false;
@@ -260,7 +340,7 @@
           .map((g, i) => {
             const sellers = g.offers.filter((o) => o.rate != null ? o.rate > 0 : o.sold > 0);
             return `<tr data-act="grp" data-i="${u.page * PAGE + i}" style="cursor:pointer"><td class="n muted">${u.page * PAGE + i + 1}</td>
-              <td><div class="nm"><b>${esc(g.name)}</b></div><div class="sm2">${g.hasNaik ? '<span class="chip up">naik</span>' : ''} ${g.hasBaru ? '<span class="chip new">baru</span>' : ''}</div></td>
+              <td><div class="nm"><b>${esc(g.name)}</b></div><div class="sm2">${g.match ? `ID ${esc(g.match.id)} · ${Math.round((g.match.score || 0) * 100)}% match` : '<span class="chip down">belum ada di katalog</span>'} ${g.hasNaik ? '<span class="chip up">naik</span>' : ''} ${g.hasBaru ? '<span class="chip new">baru</span>' : ''}</div></td>
               <td>${g.nSellers}/${g.nCarriers} menjual<br>${g.tiers.map(tierChip).join(' ')}</td>
               <td class="n">${g.monthly ? num(g.rate * 30) + '/bln' : g.hasRate ? num(g.rate) + '/hari' : '<span class="muted">' + num(g.soldTotal) + ' total</span>'}<div class="sm2">${!g.monthly && sellers.length ? num(g.soldTotal) + ' total' : ''}</div></td>
               <td class="n">${rp(g.min)}<div class="sm2">${rp(g.med)} · ${rp(g.max)}</div></td>
@@ -272,7 +352,7 @@
   }
 
   function groupModal(g) {
-    modal(`<h2>${esc(g.name)}</h2><p class="sub">Saran harga <b>${rp(g.suggest)}</b></p>
+    modal(`<h2>${esc(g.name)}</h2><p class="sub">${g.match ? `Katalog ID ${esc(g.match.id)}` : 'Belum ada di katalog kita'} · saran harga <b>${rp(g.suggest)}</b>${g.cost ? ` · HPP ${rp(g.cost)}` : ''}</p>
       <div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Nama di toko</th><th class="n">Harga</th><th class="n">Stok</th><th class="n">Terjual</th><th>Status</th></tr></thead><tbody>${g.offers
         .slice()
         .sort((a, b) => (a.price ?? 1e15) - (b.price ?? 1e15))
@@ -389,12 +469,13 @@
     const th = (k, l, cls) => `<th class="${cls || ''}" data-act="ksort" data-k="${k}">${l}${u.sort === k ? (u.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
     const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
     $('#ktbl').innerHTML = list.length
-      ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual (kolom scrape)', 'n')}${th('rate', 'Penjualan / tren', 'n')}</tr></thead><tbody>${grpHTML(
+      ? `<div class="tbl"><table><thead><tr>${all ? th('comp', 'Kompetitor') : ''}${th('name', 'Produk')}${th('status', 'Status')}${th('price', 'Harga', 'n')}${th('delta', 'Δ Harga', 'n')}${th('stock', 'Stok', 'n')}${th('sold', 'Terjual (kolom scrape)', 'n')}${th('rate', 'Penjualan / tren', 'n')}<th class="nosort">Match katalog</th></tr></thead><tbody>${grpHTML(
           grp(slice, (r) => r.comp.id),
-          (all ? 1 : 0) + 7,
+          (all ? 1 : 0) + 8,
           (g) => { const f = g.items[0].r; return `<div class="nm">${f.url ? `<a href="${esc(f.url.split('#')[0])}" target="_blank" rel="noopener">${esc(g.base)}</a>` : esc(g.base)}</div><div class="sm2">${all ? esc(f.comp.name) + ' · ' : ''}${g.items.length} varian</div>`; },
           (r, v) => {
-            return `<tr class="${v ? 'vr' : ''}">${all ? `<td>${v ? '' : `${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}`}</td>` : ''}<td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div>`}${v ? '' : `<div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div>`}</td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td></tr>`;
+            const m = S.matchOf(r.comp.id, r.k, r.name);
+            return `<tr class="${v ? 'vr' : ''}">${all ? `<td>${v ? '' : `${esc(r.comp.name)}<br>${tierChip(r.comp.tier)} ${catChip(r.comp.cat)}`}</td>` : ''}<td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</div>`}${v ? '' : `<div class="sm2">${r.nv ? r.nv + ' varian' + (r.pmax && r.pmax !== r.price ? ' · harga ' + rp(r.price) + '–' + rp(r.pmax) : '') + ' · ' : ''}${esc(String(r.k).slice(0, 60))}</div>`}</td><td>${chip(r.status)}</td><td class="n">${rp(r.price)}</td><td class="n">${pcell(r)}</td><td class="n">${num(r.stock)}</td><td class="n">${num(r.sold)}</td><td class="n">${salesCell(r)}</td><td class="small">${m ? `<span class="score ${m.score >= KS.THRESH.auto ? 'hi' : 'md'}">${Math.round(m.score * 100)}%</span>${esc(m.name)}` : '<span class="muted">–</span>'}</td></tr>`;
           }
         )}</tbody></table></div>${pager(list.length, u.page, 'kpage')}`
       : empty('Tidak ada data untuk filter ini.');
@@ -498,6 +579,8 @@
         S.pending = S.pending.filter((x) => x.id !== p.id);
       }
       persist();
+      prog('Mencocokkan SKU ke katalog…', 0.3);
+      await ensureSugg((x) => prog('Mencocokkan SKU ke katalog…', 0.3 + x * 0.4));
       S.dirty = true;
       const out = [];
       for (const r of results) {
@@ -547,6 +630,148 @@
   }
 
   // =====================================================================
+  // MATCHER
+  // =====================================================================
+  function matcherItems() {
+    const u = S.ui.m;
+    const q = u.q.trim().toLowerCase();
+    const list = [];
+    for (const c of S.comps) {
+      if (u.comp !== 'all' && u.comp !== c.id) continue;
+      const l = lastSnap(c.id);
+      if (!l) continue;
+      for (const it of l.items) {
+        const key = c.id + '|' + it.k;
+        const e = S.matches[key];
+        const sg = S.sugg[key] || [];
+        const top = sg[0] ? sg[0].score : 0;
+        let st = e && !e.none ? 'matched' : e && e.none ? 'none' : top >= KS.THRESH.review ? 'review' : 'none';
+        if (u.filter !== st) continue;
+        if (q && !it.name.toLowerCase().includes(q)) continue;
+        list.push({ comp: c, it, key, e, sg, top });
+      }
+    }
+    if (u.filter === 'review') list.sort((a, b) => b.top - a.top);
+    return list;
+  }
+
+  function viewMatcher() {
+    const main = $('#main');
+    const u = S.ui.m;
+    main.innerHTML = `<h1>SKU Matcher</h1><p class="sub">Cocokkan nama produk kompetitor ke katalog kita. Nama dibaca per bagian (merek, tipe, warna, ukuran/kapasitas) dan satuan disamakan, misalnya 120mm = 12CM. Warna atau ukuran yang berbeda tidak akan disetujui otomatis. Boleh punya beberapa sumber katalog (mis. Drive/Sheet yang berbeda) — pencocokan memakai semuanya.</p>
+      <div class="card"><h2>Sumber katalog</h2><div id="cats"></div>
+        <div class="bar" style="margin-top:12px"><input type="text" id="cname" placeholder="Nama sumber (mis. Katalog Gudang B)"><label class="btn">+ Tambah CSV<input type="file" id="cfile" accept=".csv,.tsv,text/csv" hidden></label><span class="help">CSV dengan kolom <code>id</code>, <code>name</code>; opsional <code>hpp</code>/<code>modal</code> untuk hitung margin.</span></div></div>
+      <div id="mprog"></div>
+      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><button class="btn" data-act="rematch" title="Hitung ulang match otomatis; match manual tetap">Hitung ulang otomatis</button><button class="btn" data-act="rematch-all" title="Hitung ulang SEMUA, termasuk match manual">Match ulang semua</button><button class="btn danger" data-act="clear-matches" title="Hapus semua data match">Hapus semua match</button></div>
+        <div class="tabs" id="mtabs"></div>
+        <div class="bar"><input type="search" id="mq" class="grow" placeholder="Cari nama produk kompetitor…" value="${esc(u.q)}"><select id="mcomp"><option value="all">Semua kompetitor</option>${S.comps.map((c) => `<option value="${c.id}" ${u.comp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+        <div id="mtbl"></div></div>`;
+    fillCats();
+    $('#cfile').onchange = addCatalog;
+    $('#mq').oninput = (e) => ((u.q = e.target.value), (u.page = 0), fillMatcher());
+    $('#mcomp').onchange = (e) => ((u.comp = e.target.value), (u.page = 0), fillMatcher());
+    
+    runSuggUI();
+  }
+
+  async function runSuggUI(force) {
+    const box = $('#mprog');
+    if (box) box.innerHTML = `<div class="small muted">Menghitung saran match…</div><div class="prog"><i></i></div>`;
+    await ensureSugg((p) => {
+      const i = $('#mprog i');
+      if (i) i.style.width = Math.round(p * 100) + '%';
+    }, force);
+    if (S.view !== 'matcher') return;
+    if ($('#mprog')) $('#mprog').innerHTML = '';
+    fillMatcher();
+  }
+
+  function fillCats() {
+    const box = $('#cats');
+    if (!box) return;
+    box.innerHTML = S.catalogs.length
+      ? `<div class="tbl"><table><thead><tr><th>Nama</th><th class="n">SKU</th><th class="n">Ada HPP</th><th>Aktif</th><th></th></tr></thead><tbody>${S.catalogs.map((c) => `<tr><td>${esc(c.name)}</td><td class="n">${num(c.rows.length)}</td><td class="n">${num(c.rows.filter((r) => r[2]).length)}</td><td><input type="checkbox" data-act="cat-toggle" data-id="${c.id}" ${c.enabled ? 'checked' : ''}></td><td><button class="btn sm danger" data-act="cat-del" data-id="${c.id}">Hapus</button></td></tr>`).join('')}</tbody></table></div>`
+      : empty('Belum ada katalog. Tambahkan CSV katalog Anda.');
+  }
+
+  async function addCatalog(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    const rows = KS.parseCatalog(await f.text());
+    if (!rows.length) return toast('CSV tidak terbaca (butuh kolom id,name).', true);
+    const name = ($('#cname').value || f.name.replace(/\.[^.]+$/, '')).trim();
+    const c = { id: 'cat-' + KS.uid(), name, rows, enabled: true };
+    S.catalogs.push(c);
+    await KS.db.catPut(c);
+    await afterCatalogChange();
+    toast(`${num(rows.length)} SKU ditambahkan ke "${name}"`);
+  }
+  async function afterCatalogChange() {
+    fillCats();
+    $('#mprog') && ($('#mprog').innerHTML = `<div class="small muted">Membangun index katalog…</div><div class="prog"><i></i></div>`);
+    await rebuildIndexes((p) => {
+      const i = $('#mprog i');
+      if (i) i.style.width = Math.round(p * 100) + '%';
+    });
+    // hapus match otomatis yang katalognya hilang / nonaktif
+    for (const [k, v] of Object.entries(S.matches)) if (!v.none && !v.manual && !S.catMap[v.src]) delete S.matches[k];
+    dirty();
+    if (S.view === 'matcher') await runSuggUI();
+  }
+
+  function fillMatcher() {
+    const u = S.ui.m;
+    const counts = { matched: 0, review: 0, none: 0 };
+    const keepF = u.filter,
+      keepQ = u.q;
+    u.q = '';
+    for (const f of ['matched', 'review', 'none']) (u.filter = f), (counts[f] = matcherItems().length);
+    u.filter = keepF;
+    u.q = keepQ;
+    $('#mtabs').innerHTML = [['matched', 'Sudah match'], ['none', 'Tidak ketemu']].map(([f, l]) => `<button class="${u.filter === f ? 'on' : ''}" data-act="mfilter" data-f="${f}">${l} ${num(counts[f])}</button>`).join('');
+    const list = matcherItems();
+    S.mView = list;
+    const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
+    $('#mtbl').innerHTML = list.length
+      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : 'Tidak ada produk katalog yang cocok'}</th><th></th></tr></thead><tbody>${grpHTML(
+          grp(slice.map((r, i) => ({ ...r, name: r.it.name, gi: u.page * PAGE + i })), (r) => r.comp.id),
+          4,
+          (g) => { const f = g.items[0].r; return `<div class="nm">${esc(g.base)}</div><div class="sm2">${esc(f.comp.name)} · ${g.items.length} varian</div>`; },
+          (r, v) => {
+            const gi = r.gi;
+            let mid;
+            if (r.e && !r.e.none) {
+              const m = S.matchOf(r.comp.id, r.it.k);
+              mid = m ? `<span class="score ${m.score >= KS.THRESH.auto ? 'hi' : 'md'}">${r.e.manual ? '✓' : Math.round(m.score * 100) + '%'}</span>${esc(m.name)} <span class="muted small">ID ${esc(m.id)}</span>` : '<span class="muted">katalog tidak aktif</span>';
+            } else if (r.e && r.e.none) mid = '<span class="muted">Ditandai: bukan produk kita</span>';
+            else
+              mid = `<div class="sugg">${r.sg
+                .map((s, j) => `<button data-act="pick" data-i="${gi}" data-j="${j}"><span class="score ${s.score >= KS.THRESH.auto ? 'hi' : s.score >= KS.THRESH.review ? 'md' : 'lo'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)}${S.indexes.length > 1 ? ' · ' + esc(s.srcName) : ''}</span>${whyChips(s.why)}</button>`)
+                .join('') || '<span class="muted small">Tidak ada kandidat</span>'}</div>`;
+            return `<tr class="${v ? 'vr' : ''}"><td>${v ? '' : esc(r.comp.name)}</td><td>${v ? `<div class="vn">↳ ${esc(v)}</div>` : `<div class="nm">${esc(r.it.name)}</div>`}<div class="sm2">${rp(r.it.price)}${v ? '' : ' · ' + esc(r.it.k)}</div>${v ? '' : attrLine(r.it.name)}</td><td>${mid}</td><td style="white-space:nowrap"><button class="btn sm" data-act="msearch" data-i="${gi}">Cari…</button> ${r.e ? `<button class="btn sm" data-act="unmatch" data-i="${gi}">Lepas</button>` : `<button class="btn sm" data-act="mnone" data-i="${gi}">Bukan produk kita</button>`}</td></tr>`;
+          }
+        )}</tbody></table></div>${pager(list.length, u.page, 'mpage')}`
+      : empty(S.indexes.length ? 'Tidak ada item di kategori ini.' : 'Tambahkan / aktifkan katalog dulu.');
+  }
+
+  function searchModal(gi) {
+    const r = S.mView[gi];
+    modal(`<h2>Cari di katalog</h2><p class="sub" style="margin-bottom:6px">${esc(r.it.name)}</p>${attrLine(r.it.name)}<div style="height:12px"></div><input type="search" id="sq" style="width:100%" value="${esc(r.it.name)}" autofocus><div id="sres" style="margin-top:12px"></div><div class="bar" style="margin-top:14px"><span class="grow"></span><button class="btn" data-act="close">Tutup</button></div>`);
+    const go = () => {
+      const c = KS.matchAll(S.indexes, $('#sq').value, 8);
+      $('#sres').innerHTML = `<div class="sugg">${c.map((s, j) => `<button data-act="pick-search" data-gi="${gi}" data-j="${j}"><span class="score ${s.score >= KS.THRESH.auto ? 'hi' : 'md'}">${Math.round(s.score * 100)}%</span>${esc(s.name)} <span class="muted">· ID ${esc(s.id)} · ${esc(s.srcName)}</span>${whyChips(s.why)}</button>`).join('') || '<span class="muted">Tidak ada hasil</span>'}</div>`;
+      S._sres = c;
+    };
+    $('#sq').oninput = go;
+    go();
+  }
+
+  function setMatch(r, s, manual) {
+    S.matches[r.key] = { src: s.src, id: s.id, score: +s.score.toFixed(3), manual: !!manual };
+    dirty();
+  }
+
+  // =====================================================================
   // SETTINGS
   // =====================================================================
   function viewSettings() {
@@ -564,7 +789,7 @@
         <label class="fld">Pembulatan<select id="sround"><option value="1" ${st.round == 1 ? 'selected' : ''}>Tidak</option><option value="100" ${st.round == 100 ? 'selected' : ''}>Rp 100</option><option value="1000" ${st.round == 1000 ? 'selected' : ''}>Rp 1.000</option></select></label>
         <label class="fld">"Naik" jika laju ≥ × periode lalu<input type="number" step="0.05" id="sup" value="${st.upRatio}"></label>
         <label class="fld">"Turun" jika laju ≤ × periode lalu<input type="number" step="0.05" id="sdown" value="${st.downRatio}"></label>
-        </div>
+        <label class="fld">Auto-match jika skor ≥<input type="number" step="0.05" min="0.4" max="1" id="smatch" value="${st.matchAuto}"></label></div>
         <div class="bar" style="margin-top:12px"><button class="btn pri" data-act="save-rules">Simpan aturan</button></div>
         <p class="help">Penjualan dihitung dari selisih kolom <i>terjual</i> antar scrape; jika tidak ada, dari penurunan <i>stok</i> (restock tidak dihitung sebagai penjualan). Status naik/turun membandingkan laju per hari periode ini vs periode sebelumnya (butuh ≥3 scrape).</p></div></div>
       <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th>Kategori</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td><select data-ccat="${c.id}">${catOpts(c.cat)}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td style="white-space:nowrap"><button class="btn sm" data-act="backup-comp" data-id="${c.id}">Backup</button> <button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
@@ -662,7 +887,7 @@
   function render() {
     $$('#nav button').forEach((b) => b.classList.toggle('on', b.dataset.view === S.view));
     modal(null);
-    ({ dashboard: viewDashboard, kompetitor: viewKomp, upload: viewUpload, settings: viewSettings }[S.view] || viewDashboard)();
+    ({ dashboard: viewDashboard, kompetitor: viewKomp, upload: viewUpload, matcher: viewMatcher, settings: viewSettings }[S.view] || viewDashboard)();
     window.scrollTo(0, 0);
   }
   function go(v) {
@@ -686,6 +911,10 @@
       x.info.mapping[t.dataset.f] = t.value || undefined;
       const n = KS.normalizeItems(x.info.raw, x.info.mapping, { merge: x.merge }).length;
       $(`[data-pid="${x.id}"] [data-cnt]`).textContent = `${num(n)} produk terbaca dari ${num(x.info.raw.length)} baris`;
+    } else if (t.dataset.act === 'cat-toggle') {
+      const c = S.catalogs.find((x) => x.id === t.dataset.id);
+      c.enabled = t.checked;
+      KS.db.catPut(c).then(afterCatalogChange);
     }
   });
 
@@ -745,6 +974,36 @@
         }
         return fillResult();
       }
+      case 'mfilter': u.m.filter = d.f; u.m.page = 0; return fillMatcher();
+      case 'mpage': u.m.page = Math.max(0, u.m.page + +d.d); return fillMatcher();
+      case 'pick': { const r = S.mView[+d.i]; setMatch(r, r.sg[+d.j], true); return fillMatcher(); }
+      case 'msearch': return searchModal(+d.i);
+      case 'pick-search': { const r = S.mView[+d.gi]; setMatch(r, S._sres[+d.j], true); modal(null); return fillMatcher(); }
+      case 'mnone': S.matches[S.mView[+d.i].key] = { none: true }; dirty(); return fillMatcher();
+      case 'unmatch': delete S.matches[S.mView[+d.i].key]; dirty(); return fillMatcher();
+      case 'rematch':
+        for (const [k, v] of Object.entries(S.matches)) if (!v.manual && !v.none) delete S.matches[k];
+        S.sugg = {};
+        dirty();
+        return runSuggUI(true);
+      case 'rematch-all':
+        if (!confirm('Match ulang SEMUA SKU (termasuk match manual dan tanda "tidak ada di katalog")? Pilihan manual akan diganti hasil otomatis.')) return;
+        S.matches = {};
+        S.sugg = {};
+        dirty();
+        return runSuggUI(true);
+      case 'clear-matches':
+        if (!confirm('Hapus SEMUA data match (otomatis, manual, dan "tidak ada")? Riwayat snapshot tidak ikut terhapus.')) return;
+        S.matches = {};
+        S.sugg = {};
+        dirty();
+        toast('Semua match dihapus');
+        return fillMatcher();
+      case 'cat-del':
+        if (!confirm('Hapus sumber katalog ini?')) return;
+        S.catalogs = S.catalogs.filter((c) => c.id !== d.id);
+        await KS.db.catDel(d.id);
+        return afterCatalogChange();
       case 'save-api':
         S.settings.apiUrl = $('#sapi').value.trim();
         S.settings.token = $('#stoken').value;
@@ -764,6 +1023,7 @@
         st.round = +$('#sround').value;
         st.upRatio = +$('#sup').value || 1.25;
         st.downRatio = +$('#sdown').value || 0.72;
+        st.matchAuto = +$('#smatch').value || 0.72;
         dirty();
         return toast('Aturan disimpan');
       }
@@ -777,6 +1037,7 @@
           dirty();
           setSync('ok', 'Tersinkron');
           toast(`${j.competitors.length} kompetitor, ${snaps.length} snapshot ditarik`);
+          await ensureSugg();
           return render();
         } catch (er) {
           setSync('err', 'Gagal');
@@ -848,7 +1109,10 @@
     }
     if (S.settings.apiUrl) setSync('', 'Sheets terhubung');
     const h = location.hash.slice(1);
-    if (['dashboard', 'kompetitor', 'upload', 'settings'].includes(h)) S.view = h;
+    if (['dashboard', 'kompetitor', 'upload', 'matcher', 'settings'].includes(h)) S.view = h;
     render();
+    ensureSugg().then(() => {
+      if (S.view === 'dashboard') render();
+    });
   })();
 })();
