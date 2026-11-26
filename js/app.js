@@ -4,7 +4,7 @@
   const { $, $$, esc, rp, num, fmtDate } = KS;
 
   const S = (KS.S = {
-    settings: { apiUrl: '', token: '', strategy: 'median', round: 100, upRatio: 1.25, downRatio: 0.75, autoSync: true, matchAuto: 0.72 },
+    settings: { apiUrl: '', token: '', strategy: 'median', round: 100, upRatio: 1.25, downRatio: 0.75, autoSync: true, matchAuto: 0.72, matchMin: 0.25 },
     comps: [],
     tiers: ['Agresif', 'Expert', 'Reguler'],
     cats: [], // kategori buatan sendiri (mis. Komputer, Laptop, Aksesoris); comp.cat menunjuk salah satunya
@@ -149,8 +149,10 @@
     let changed = false;
     for (let i = 0; i < items.length; i++) {
       const [key, name] = items[i];
-      const b = KS.matchBest(S.indexes, name); // langsung tembak yang merek, tipe, dan warnanya cocok
-      S.sugg[key] = b ? [b] : [];
+      const min = S.settings.matchMin ?? 0.25;
+      const list = KS.matchAll(S.indexes, name, 10);
+      const b = KS.pickBest(list, min); // langsung tembak yang merek, tipe, dan warnanya cocok
+      S.sugg[key] = list.filter((m) => m.score >= min).slice(0, 4);
       if (b) {
         S.matches[key] = { src: b.src, id: b.id, score: +b.score.toFixed(3), manual: false };
         changed = true;
@@ -645,7 +647,7 @@
         const e = S.matches[key];
         const sg = S.sugg[key] || [];
         const top = sg[0] ? sg[0].score : 0;
-        let st = e && !e.none ? 'matched' : e && e.none ? 'none' : top >= KS.THRESH.review ? 'review' : 'none';
+        let st = e && !e.none ? 'matched' : e && e.none ? 'none' : top >= (S.settings.matchMin ?? 0.25) ? 'review' : 'none';
         if (u.filter !== st) continue;
         if (q && !it.name.toLowerCase().includes(q)) continue;
         list.push({ comp: c, it, key, e, sg, top });
@@ -662,12 +664,19 @@
       <div class="card"><h2>Sumber katalog</h2><div id="cats"></div>
         <div class="bar" style="margin-top:12px"><input type="text" id="cname" placeholder="Nama sumber (mis. Katalog Gudang B)"><label class="btn">+ Tambah CSV<input type="file" id="cfile" accept=".csv,.tsv,text/csv" hidden></label><span class="help">CSV dengan kolom <code>id</code>, <code>name</code>; opsional <code>hpp</code>/<code>modal</code> untuk hitung margin.</span></div></div>
       <div id="mprog"></div>
-      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><button class="btn" data-act="rematch" title="Hitung ulang match otomatis; match manual tetap">Hitung ulang otomatis</button><button class="btn" data-act="rematch-all" title="Hitung ulang SEMUA, termasuk match manual">Match ulang semua</button><button class="btn danger" data-act="clear-matches" title="Hapus semua data match">Hapus semua match</button></div>
+      <div class="card"><div class="bar"><h2 style="margin:0" class="grow">Antrian pencocokan</h2><label class="small muted" title="Kandidat dengan skor di bawah ini tidak ditampilkan / tidak dipakai">Skor minimal <input type="number" id="mmin" min="0" max="100" step="5" value="${Math.round((S.settings.matchMin ?? 0.25) * 100)}" style="width:64px"> %</label><button class="btn" data-act="rematch" title="Hitung ulang match otomatis; match manual tetap">Hitung ulang otomatis</button><button class="btn" data-act="rematch-all" title="Hitung ulang SEMUA, termasuk match manual">Match ulang semua</button><button class="btn danger" data-act="clear-matches" title="Hapus semua data match">Hapus semua match</button></div>
         <div class="tabs" id="mtabs"></div>
         <div class="bar"><input type="search" id="mq" class="grow" placeholder="Cari nama produk kompetitor…" value="${esc(u.q)}"><select id="mcomp"><option value="all">Semua kompetitor</option>${S.comps.map((c) => `<option value="${c.id}" ${u.comp === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
         <div id="mtbl"></div></div>`;
     fillCats();
     $('#cfile').onchange = addCatalog;
+    $('#mmin').onchange = (e) => {
+      S.settings.matchMin = Math.min(1, Math.max(0, (+e.target.value || 0) / 100));
+      for (const [k, v] of Object.entries(S.matches)) if (!v.manual && !v.none) delete S.matches[k];
+      S.sugg = {};
+      dirty();
+      runSuggUI(true);
+    };
     $('#mq').oninput = (e) => ((u.q = e.target.value), (u.page = 0), fillMatcher());
     $('#mcomp').onchange = (e) => ((u.comp = e.target.value), (u.page = 0), fillMatcher());
     
@@ -728,12 +737,12 @@
     for (const f of ['matched', 'review', 'none']) (u.filter = f), (counts[f] = matcherItems().length);
     u.filter = keepF;
     u.q = keepQ;
-    $('#mtabs').innerHTML = [['matched', 'Sudah match'], ['none', 'Tidak ketemu']].map(([f, l]) => `<button class="${u.filter === f ? 'on' : ''}" data-act="mfilter" data-f="${f}">${l} ${num(counts[f])}</button>`).join('');
+    $('#mtabs').innerHTML = [['matched', 'Sudah match'], ['review', 'Perlu cek'], ['none', 'Tidak ketemu']].map(([f, l]) => `<button class="${u.filter === f ? 'on' : ''}" data-act="mfilter" data-f="${f}">${l} ${num(counts[f])}</button>`).join('');
     const list = matcherItems();
     S.mView = list;
     const slice = list.slice(u.page * PAGE, u.page * PAGE + PAGE);
     $('#mtbl').innerHTML = list.length
-      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : 'Tidak ada produk katalog yang cocok'}</th><th></th></tr></thead><tbody>${grpHTML(
+      ? `<div class="tbl"><table><thead><tr><th>Kompetitor</th><th>Produk kompetitor</th><th>${u.filter === 'matched' ? 'Match di katalog' : u.filter === 'review' ? 'Saran dari katalog' : 'Tidak ada produk katalog yang cocok'}</th><th></th></tr></thead><tbody>${grpHTML(
           grp(slice.map((r, i) => ({ ...r, name: r.it.name, gi: u.page * PAGE + i })), (r) => r.comp.id),
           4,
           (g) => { const f = g.items[0].r; return `<div class="nm">${esc(g.base)}</div><div class="sm2">${esc(f.comp.name)} · ${g.items.length} varian</div>`; },
@@ -789,7 +798,7 @@
         <label class="fld">Pembulatan<select id="sround"><option value="1" ${st.round == 1 ? 'selected' : ''}>Tidak</option><option value="100" ${st.round == 100 ? 'selected' : ''}>Rp 100</option><option value="1000" ${st.round == 1000 ? 'selected' : ''}>Rp 1.000</option></select></label>
         <label class="fld">"Naik" jika laju ≥ × periode lalu<input type="number" step="0.05" id="sup" value="${st.upRatio}"></label>
         <label class="fld">"Turun" jika laju ≤ × periode lalu<input type="number" step="0.05" id="sdown" value="${st.downRatio}"></label>
-        <label class="fld">Auto-match jika skor ≥<input type="number" step="0.05" min="0.4" max="1" id="smatch" value="${st.matchAuto}"></label></div>
+        <label class="fld">Skor minimal SKU Matcher (0–1)<input type="number" step="0.05" min="0" max="1" id="smatch" value="${st.matchMin ?? 0.25}"></label></div>
         <div class="bar" style="margin-top:12px"><button class="btn pri" data-act="save-rules">Simpan aturan</button></div>
         <p class="help">Penjualan dihitung dari selisih kolom <i>terjual</i> antar scrape; jika tidak ada, dari penurunan <i>stok</i> (restock tidak dihitung sebagai penjualan). Status naik/turun membandingkan laju per hari periode ini vs periode sebelumnya (butuh ≥3 scrape).</p></div></div>
       <div class="card"><h2>Kompetitor &amp; tier</h2><div class="tbl"><table><thead><tr><th>Nama</th><th>Tier</th><th>Kategori</th><th class="n">Snapshot</th><th></th></tr></thead><tbody>${S.comps.map((c) => `<tr><td><input type="text" data-cname="${c.id}" value="${esc(c.name)}"></td><td><select data-ctier="${c.id}">${S.tiers.concat(S.tiers.includes(c.tier) ? [] : [c.tier]).map((t) => `<option ${c.tier === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></td><td><select data-ccat="${c.id}">${catOpts(c.cat)}</select></td><td class="n">${(S.snaps[c.id] || []).length}</td><td style="white-space:nowrap"><button class="btn sm" data-act="backup-comp" data-id="${c.id}">Backup</button> <button class="btn sm danger" data-act="del-comp" data-id="${c.id}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Belum ada.</td></tr>'}</tbody></table></div>
@@ -1023,7 +1032,7 @@
         st.round = +$('#sround').value;
         st.upRatio = +$('#sup').value || 1.25;
         st.downRatio = +$('#sdown').value || 0.72;
-        st.matchAuto = +$('#smatch').value || 0.72;
+        st.matchMin = Math.min(1, Math.max(0, +$('#smatch').value || 0));
         dirty();
         return toast('Aturan disimpan');
       }

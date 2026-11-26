@@ -76,7 +76,7 @@ function score(c, k, w, wm) {
   const catCover = b ? a / b : 0;                        // seberapa banyak nama katalog terjelaskan kompetitor
   let s = 0.65 * nameCover + 0.35 * catCover;
   if (c.brand && !k.all.has(c.brand)) s *= 0.3;          // merek berbeda / tidak ada
-  { const cc = [...c.all].filter((t) => COLORS.has(t)); if (cc.length && !cc.some((t) => k.all.has(t)) && [...k.all].some((t) => COLORS.has(t))) s *= 0.5; } // tambahan: warna beda (White ≠ Black)
+  { const cc = (c.vv.size && [...c.vv].some((t) => COLORS.has(t)) ? [...c.vv] : [...c.all]).filter((t) => COLORS.has(t)); if (cc.length && !cc.some((t) => k.all.has(t)) && [...k.all].some((t) => COLORS.has(t))) s *= 0.5; } // tambahan: warna beda (White ≠ Black)
   if (c.model.size) {
     let tot = 0, miss = 0, top = 0; for (const t of c.model) top = Math.max(top, wm(t));
     for (const t of c.model) { const x = wm(t); if (x < 0.6 * top) continue; tot += x; if (!k.all.has(t)) miss += x; }   // hanya kode yang paling khas
@@ -134,7 +134,7 @@ function score(c, k, w, wm) {
         hit = ms.filter((t) => k.all.has(t));
       why.push({ l: 'Tipe', s: hit.length === ms.length ? 'ok' : hit.length * 2 >= ms.length ? 'part' : 'bad', t: ms.join(' ').toUpperCase() });
     }
-    const cc = [...c.all].filter((t) => COLORS.has(t)),
+    const cc = (c.vv.size && [...c.vv].some((t) => COLORS.has(t)) ? [...c.vv] : [...c.all]).filter((t) => COLORS.has(t)),
       kc = [...k.all].filter((t) => COLORS.has(t));
     if (cc.length) why.push(!kc.length ? { l: 'Warna', s: 'na', t: cc.join('/') + ' (katalog tidak menyebut)' } : cc.some((t) => kc.includes(t)) ? { l: 'Warna', s: 'ok', t: cc.join('/') } : { l: 'Warna', s: 'bad', t: cc[0] + ' ≠ ' + kc[0] });
     const q = [...c.vv].filter(isQty).filter((t) => !isSpeed(t));
@@ -183,13 +183,16 @@ function score(c, k, w, wm) {
 
   /** langsung tembak 1 match: urut cek merek → tipe → warna (+ukuran varian). Kandidat yang gagal salah satunya dilewati.
    *  null = tidak ada produk katalog yang merek, tipe, dan warnanya sesuai. */
-  KS.matchBest = function (indexes, name) {
-    for (const m of KS.matchAll(indexes, name, 10)) {
-      if (m.score < KS.THRESH.review) break;
+  KS.pickBest = function (list, min) {
+    for (const m of list) {
+      if (m.score < (min ?? KS.THRESH.review)) break;
       if (m.why.some((x) => x.s === 'bad')) continue;
       return m;
     }
     return null;
+  };
+  KS.matchBest = function (indexes, name, min) {
+    return KS.pickBest(KS.matchAll(indexes, name, 10), min);
   };
 
   /** atribut terbaca dari nama produk (untuk ditampilkan): {brand, type, colors[], specs[]} */
